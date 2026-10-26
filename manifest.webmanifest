@@ -1,0 +1,20 @@
+{
+  "name": "EquiBond · 股债性价比系统",
+  "short_name": "EquiBond",
+  "description": "投资回报 VS 债券利息：ERP 信号、仓位建议与策略回测",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f9",
+  "theme_color": "#d1362d",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

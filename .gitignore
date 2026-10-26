@@ -1,0 +1,14 @@
+# 项目记忆 / 本地环境，不上传
+.workbuddy/
+__pycache__/
+*.pyc
+
+# 临时截图与探针
+_shot_*.png
+_probe.html
+_*.tmp
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,389 @@
+/* ============================================================
+ * EquiBond Engine  ——  股债性价比 / 股权风险溢价 计算核心
+ * 纯函数，无 DOM 依赖，可在 Node 中直接做单元测试
+ *
+ * 模型主线：
+ *   1) 股票端的"投资回报"用盈利收益率代理:  E/P = 100 / PE(TTM)
+ *   2) 债券端的"利息"用无风险利率代理:      Y10 = 10年期国债到期收益率
+ *   3) 二者之差即股权风险溢价 ERP = E/P - Y10
+ *      差值越大 => 股票相对债券越便宜 => 越应该超配股票
+ *   4) 用历史分位 / Z-Score 把 ERP 标准化，再映射到股票仓位
+ *   5) 用 signal(t-1) 决定 t 月仓位，杜绝未来函数，回测净值
+ * ============================================================ */
+(function (global) {
+  'use strict';
+
+  // ---------------- 基础统计工具 ----------------
+  const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+
+  function mean(a) {
+    if (!a.length) return NaN;
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += a[i];
+    return s / a.length;
+  }
+
+  function stdev(a) {
+    if (a.length < 2) return NaN;
+    const m = mean(a);
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += (a[i] - m) * (a[i] - m);
+    return Math.sqrt(s / (a.length - 1));
+  }
+
+  /** 样本中 <= x 的占比，返回 0~1 */
+  function percentileRank(sample, x) {
+    let c = 0;
+    for (let i = 0; i < sample.length; i++) if (sample[i] <= x) c++;
+    return c / sample.length;
+  }
+
+  /** 修正久期（付息债券，半年付息，面值附近）
+   *  Macaulay D = (1+i)/i * (1 - (1+i)^-n)，再除以 (1+i) 得修正久期 */
+  function modDuration(yieldPct) {
+    const N = 10, m = 2, n = N * m;
+    const y = yieldPct / 100;
+    if (y <= 1e-6) return N;
+    const i = y / m;
+    const dPeriods = ((1 + i) / i) * (1 - Math.pow(1 + i, -n));
+    return dPeriods / (1 + i) / m;
+  }
+
+  // ---------------- 面板构建 ----------------
+  /**
+   * 把 dataset.rows 转成带派生指标 + 月度收益的序列
+   * @param {Array} rows 原始行（含 ok 标记）
+   * @returns {Array} 仅含可用月份的对象数组，升序
+   */
+  function buildSeries(rows) {
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r.ok) continue;
+
+      const prev = rows[i - 1];
+      const ep = 100 / r.pe;
+      const rec = {
+        m: r.m,
+        date: r.d,
+        pe: r.pe,
+        pb: r.pb,
+        div: r.div,
+        close: r.close,
+        y10: r.y10,
+        y1: r.y1,
+        y30: r.y30,
+        ep: ep,
+        erp: ep - r.y10,
+        ratio: ep / r.y10,
+        dyspread: r.div - r.y10,
+        retEq: null,
+        retEqPrice: null,
+        retBd: null,
+      };
+
+      // --- 股票端月度收益: 价格收益 + 股息再投近似 ---
+      if (prev && prev.close != null) {
+        rec.retEqPrice = r.close / prev.close - 1;
+        const divPrev = prev.div != null ? prev.div : 0;
+        rec.retEq = rec.retEqPrice + divPrev / 100 / 12;
+      }
+
+      // --- 债券端月度收益: 票息 carry + 久期驱动的价格损益 ---
+      // 用久期近似把 10 年期收益率序列合成"固定期限国债总收益指数"
+      if (r.y10 != null) {
+        if (prev && prev.y10 != null) {
+          const D = modDuration(prev.y10);
+          const carry = prev.y10 / 100 / 12;
+          const dy = (r.y10 - prev.y10) / 100;
+          rec.retBd = carry - D * dy;
+        } else {
+          // 首月无上月收益率，只计 carry
+          rec.retBd = r.y10 / 100 / 12;
+        }
+      }
+      out.push(rec);
+    }
+    return out;
+  }
+
+  // ---------------- 滚动统计 ----------------
+  /**
+   * @param {Array} series 面板
+   * @param {number} i 当前位置
+   * @param {number} window 回看月数，0 = 全部历史（扩张窗口）
+   * @param {string} key 信号字段 erp / ratio / dyspread
+   */
+  function rollingStats(series, i, window, key) {
+    const start = window > 0 ? Math.max(0, i - window + 1) : 0;
+    const sample = [];
+    for (let k = start; k <= i; k++) {
+      const v = series[k][key];
+      if (v != null && isFinite(v)) sample.push(v);
+    }
+    const x = series[i][key];
+    const mu = mean(sample);
+    const sd = stdev(sample);
+    return {
+      n: sample.length,
+      value: x,
+      mean: mu,
+      sd: sd,
+      pct: percentileRank(sample, x),
+      z: sd > 0 ? (x - mu) / sd : NaN,
+      min: Math.min.apply(null, sample),
+      max: Math.max.apply(null, sample),
+      p10: quantile(sample, 0.1),
+      p25: quantile(sample, 0.25),
+      p50: quantile(sample, 0.5),
+      p75: quantile(sample, 0.75),
+      p90: quantile(sample, 0.9),
+    };
+  }
+
+  function quantile(sample, q) {
+    if (!sample.length) return NaN;
+    const a = sample.slice().sort((x, y) => x - y);
+    const pos = (a.length - 1) * q;
+    const lo = Math.floor(pos), hi = Math.ceil(pos);
+    return lo === hi ? a[lo] : a[lo] + (a[hi] - a[lo]) * (pos - lo);
+  }
+
+  // ---------------- 仓位映射 ----------------
+  /**
+   * @param {number} p 历史分位 0~1
+   * @param {number} z Z-Score
+   * @param {object} cfg { map:'pct'|'z', minW, maxW, zRange }
+   * @returns {number} 股票仓位 0~1
+   */
+  function equityWeight(p, z, cfg) {
+    let t;
+    if (cfg.map === 'pct') {
+      t = clamp(p, 0, 1);
+    } else {
+      const zr = cfg.zRange || 2;
+      t = (clamp(z, -zr, zr) + zr) / (2 * zr);
+      t = clamp(t, 0, 1);
+    }
+    return clamp(cfg.minW + (cfg.maxW - cfg.minW) * t, 0, 1);
+  }
+
+  // ---------------- 绩效指标 ----------------
+  function perfMetrics(rets, rfAnnual) {
+    const n = rets.length;
+    if (!n) return null;
+    let nav = 1, peak = 1, maxDD = 0, win = 0;
+    const navSeries = [1];
+    for (let i = 0; i < n; i++) {
+      nav *= 1 + rets[i];
+      navSeries.push(nav);
+      if (nav > peak) peak = nav;
+      const dd = nav / peak - 1;
+      if (dd < maxDD) maxDD = dd;
+      if (rets[i] > 0) win++;
+    }
+    const years = n / 12;
+    const ann = Math.pow(nav, 1 / years) - 1;
+    const vol = stdev(rets) * Math.sqrt(12);
+    const rf = rfAnnual || 0;
+    return {
+      total: nav - 1,
+      ann: ann,
+      vol: vol,
+      sharpe: vol > 0 ? (ann - rf) / vol : NaN,
+      maxDD: maxDD,
+      calmar: maxDD < 0 ? ann / Math.abs(maxDD) : NaN,
+      winRate: win / n,
+      navSeries: navSeries,
+    };
+  }
+
+  // ---------------- 回测 ----------------
+  /**
+   * 信号 t-1 -> 仓位 t -> 收益 t，月度再平衡
+   * @param {Array} series 面板
+   * @param {object} cfg {
+   *   signal:'erp'|'ratio'|'dyspread', window, map, minW, maxW, zRange,
+   *   startIdx, rebalance:1|3, costBp
+   * }
+   */
+  function backtest(series, cfg) {
+    const startIdx = cfg.startIdx || 0;
+    const rets = [], weights = [], dates = [], turnover = [];
+    let nav = 1, w = null, prevW = null, costAcc = 0;
+
+    for (let i = startIdx; i < series.length; i++) {
+      const r = series[i];
+      if (r.retEq == null || r.retBd == null) continue;
+
+      if (w === null) {
+        // 首期用当前信号建仓
+        const st = rollingStats(series, i, cfg.window, cfg.signal);
+        w = equityWeight(st.pct, st.z, cfg);
+      } else if ((i - startIdx) % (cfg.rebalance || 1) === 0) {
+        // 调仓日：用上一期观测到的信号
+        const st = rollingStats(series, i - 1, cfg.window, cfg.signal);
+        w = equityWeight(st.pct, st.z, cfg);
+      }
+
+      const turn = prevW === null ? Math.abs(w) : Math.abs(w - prevW);
+      const cost = turn * (cfg.costBp || 0) / 10000;
+      costAcc += cost;
+
+      const ret = w * r.retEq + (1 - w) * r.retBd - cost;
+      nav *= 1 + ret;
+
+      rets.push(ret);
+      weights.push(w);
+      dates.push(r.m);
+      turnover.push(turn);
+      prevW = w;
+    }
+
+    // 对照组
+    const eqRets = [], bdRets = [], mixRets = [];
+    for (let i = startIdx; i < series.length; i++) {
+      const r = series[i];
+      if (r.retEq == null || r.retBd == null) continue;
+      eqRets.push(r.retEq);
+      bdRets.push(r.retBd);
+      mixRets.push(0.6 * r.retEq + 0.4 * r.retBd);
+    }
+
+    let rfSum = 0, rfCnt = 0;
+    for (let i = startIdx; i < series.length; i++) {
+      if (series[i].y10 != null) { rfSum += series[i].y10; rfCnt++; }
+    }
+    const rf = rfCnt ? rfSum / rfCnt / 100 : 0;
+
+    return {
+      dates: dates,
+      weights: weights,
+      turnover: turnover,
+      costTotal: costAcc,
+      strategy: perfMetrics(rets, rf),
+      equity: perfMetrics(eqRets, rf),
+      bond: perfMetrics(bdRets, rf),
+      mix6040: perfMetrics(mixRets, rf),
+      rf: rf,
+      avgTurnover: turnover.length ? mean(turnover) : 0,
+    };
+  }
+
+  // ---------------- 当前读数快照 ----------------
+  function currentSnapshot(series, cfg) {
+    const i = series.length - 1;
+    if (i < 0) return null;
+    const r = series[i];
+    const keys = ['erp', 'ratio', 'dyspread'];
+    const stats = {};
+    keys.forEach((k) => { stats[k] = rollingStats(series, i, cfg.window, k); });
+
+    const st = stats[cfg.signal];
+    const w = equityWeight(st.pct, st.z, cfg);
+
+    // 历史同期对照：ERP 处于不同历史分位时对应的 PE 与 Y10 水平
+    const bands = [];
+    [0.1, 0.25, 0.5, 0.75, 0.9].forEach((q) => {
+      const all = series.map((s) => s[cfg.signal]).filter((v) => v != null && isFinite(v));
+      bands.push({ q: q, value: quantile(all, q) });
+    });
+
+    return {
+      index: i,
+      date: r.date,
+      month: r.m,
+      pe: r.pe, pb: r.pb, div: r.div, close: r.close,
+      ep: r.ep, y10: r.y10, erp: r.erp, ratio: r.ratio, dyspread: r.dyspread,
+      stats: stats,
+      selected: cfg.signal,
+      weight: w,
+      historyBands: bands,
+      modDur: modDuration(r.y10),
+    };
+  }
+
+  // ---------------- 历史类比：同样信号强度之后发生了什么 ----------------
+  /**
+   * 找出历史上"信号 ≥ 当前强度"的所有时点，统计其后 horizon 个月的前瞻表现
+   */
+  function forwardReturns(series, cfg, horizon) {
+    horizon = horizon || 12;
+    const key = cfg.signal;
+    const N = series.length;
+    const curPct = rollingStats(series, N - 1, cfg.window, key).pct;
+    const eq = [], bd = [];
+    for (let i = 0; i <= N - 1 - horizon; i++) {
+      const st = rollingStats(series, i, cfg.window, key);
+      if (!isFinite(st.pct)) continue;
+      if (st.pct >= curPct - 1e-9) {
+        let a = 1, b = 1, valid = true;
+        for (let k = 1; k <= horizon; k++) {
+          const row = series[i + k];
+          if (row.retEq == null || row.retBd == null) { valid = false; break; }
+          a *= 1 + row.retEq;
+          b *= 1 + row.retBd;
+        }
+        if (!valid) continue;
+        eq.push(a - 1);
+        bd.push(b - 1);
+      }
+    }
+    const winCount = eq.filter((x) => x > 0).length;
+    return {
+      n: eq.length, horizon: horizon, threshold: curPct,
+      eqMean: mean(eq), eqMedian: quantile(eq, 0.5), eqWin: winCount / (eq.length || 1),
+      eqP25: quantile(eq, 0.25), eqP75: quantile(eq, 0.75),
+      bdMean: mean(bd), excess: mean(eq) - mean(bd),
+    };
+  }
+
+  // ---------------- 情景推演矩阵 ----------------
+  /**
+   * 给定当前Y10与PE，推演 "PE变动% × Y10变动bp" 下的 ERP 与目标股票仓位
+   */
+  function scenarios(series, cfg, peSteps, bpSteps) {
+    const i = series.length - 1;
+    const basePe = series[i].pe;
+    const baseY = series[i].y10;
+    const all = series.map((s) => s[cfg.signal]).filter((v) => v != null && isFinite(v));
+
+    // 预先算好全历史样本的均值与标准差，便于把推演值换成 z / 分位
+    const mu = mean(all), sd = stdev(all);
+    const win = cfg.window > 0 ? Math.max(0, i - cfg.window + 1) : 0;
+    const recent = [];
+    for (let k = win; k <= i; k++) {
+      const v = series[k][cfg.signal];
+      if (v != null && isFinite(v)) recent.push(v);
+    }
+    const rMu = mean(recent), rSd = stdev(recent);
+
+    return peSteps.map((dPe) => {
+      const row = { dPe: dPe };
+      row.cells = bpSteps.map((bp) => {
+        const pe = basePe * (1 + dPe);
+        const y = baseY + bp / 100;
+        const ep = 100 / pe;
+        let v;
+        if (cfg.signal === 'erp') v = ep - y;
+        else if (cfg.signal === 'ratio') v = ep / y;
+        else v = (series[i].div / (1 + dPe)) - y; // 股息率随价格反向变动
+        const z = (v - rMu) / rSd;
+        const pct = percentileRank(recent, v);
+        row.__v = v;
+        return { bp: bp, value: v, pct: pct, z: z, weight: equityWeight(pct, z, cfg) };
+      });
+      return row;
+    });
+  }
+
+  // ---------------- 导出 ----------------
+  const Engine = {
+    clamp, mean, stdev, quantile, percentileRank, modDuration,
+    buildSeries, rollingStats, equityWeight, perfMetrics, backtest,
+    currentSnapshot, scenarios, forwardReturns,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
+  else global.EQBEngine = Engine;
+})(typeof globalThis !== 'undefined' ? globalThis : window);

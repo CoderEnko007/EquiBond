@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EquiBond · 项目文档</title>
+<style>
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:#f6f7f9;color:#1f2430;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:15px;line-height:1.78;-webkit-font-smoothing:antialiased;
+}
+#progress{position:fixed;top:0;left:0;height:2.5px;width:0;background:#2f66e0;z-index:60;transition:width .1s linear}
+
+/* ---------- 侧栏 ---------- */
+#side{
+  position:fixed;top:0;left:0;bottom:0;width:296px;background:#fff;
+  border-right:1px solid #e6e8ee;display:flex;flex-direction:column;z-index:50;
+}
+#side .brand{padding:20px 22px 14px;border-bottom:1px solid #eef0f5}
+#side .brand b{display:block;font-size:15.5px;letter-spacing:.2px}
+#side .brand span{display:block;margin-top:3px;font-size:11.5px;color:#8a90a0}
+#side .brand .home{
+  display:inline-block;margin-top:10px;font-size:12px;color:#2f66e0;text-decoration:none;
+  background:#eef3ff;border-radius:6px;padding:4px 10px;font-weight:600;
+}
+#side .brand .home:hover{background:#e2ebff}
+#tocsearch{
+  margin:12px 16px 8px;padding:7px 11px;border:1px solid #e0e3ea;border-radius:7px;
+  font-size:12.5px;outline:none;width:calc(100% - 32px);background:#fafbfc;color:#1f2430;font-family:inherit;
+}
+#tocsearch:focus{border-color:#2f66e0;background:#fff}
+#toc{flex:1;overflow-y:auto;padding:4px 10px 30px}
+#toc a{
+  display:block;padding:5px 12px 5px 14px;color:#5a6371;text-decoration:none;
+  font-size:13px;border-radius:6px;line-height:1.5;border-left:2px solid transparent;
+}
+#toc a:hover{background:#f3f5f9;color:#1f2430}
+#toc a.on{color:#2f66e0;font-weight:600;background:#eef3ff;border-left-color:#2f66e0}
+#toc a.h2{font-size:13.4px;font-weight:600;color:#2b3240;margin-top:7px}
+#toc a.h3{padding-left:26px}
+#toc a.h4{padding-left:38px;font-size:12.4px;color:#7b8393}
+#toc a.hide{display:none}
+#toc .none{padding:14px;color:#9aa1af;font-size:12.5px}
+
+/* ---------- 正文 ---------- */
+#main{margin-left:296px;padding:0 0 120px}
+#doc{max-width:940px;margin:0 auto;padding:46px 44px 0}
+.doc-title{
+  font-size:31px;line-height:1.35;margin:0 0 6px;letter-spacing:-.4px;font-weight:700;
+  padding-bottom:20px;border-bottom:2px solid #e6e8ee;
+}
+#doc h2{
+  font-size:23px;margin:52px 0 16px;padding-top:24px;border-top:1px solid #e9ebf0;
+  letter-spacing:-.2px;font-weight:700;
+}
+#doc h3{font-size:17.5px;margin:34px 0 12px;font-weight:650;color:#171b23}
+#doc h4{font-size:14.8px;margin:24px 0 10px;font-weight:650;color:#39404e}
+#doc h2>.anchor,#doc h3>.anchor,#doc h4>.anchor{
+  opacity:0;margin-left:8px;color:#c2c8d4;text-decoration:none;font-weight:400;font-size:.8em;
+}
+#doc h2:hover>.anchor,#doc h3:hover>.anchor,#doc h4:hover>.anchor{opacity:1}
+#doc p{margin:0 0 15px}
+#doc ul,#doc ol{margin:0 0 15px;padding-left:24px}
+#doc li{margin:5px 0}
+#doc li>ul,#doc li>ol{margin:6px 0}
+#doc strong{font-weight:650;color:#111520}
+#doc a{color:#2f66e0;text-decoration:none;border-bottom:1px solid rgba(47,102,224,.28)}
+#doc a:hover{border-bottom-color:#2f66e0}
+#doc hr{border:0;border-top:1px solid #e9ebf0;margin:34px 0}
+#doc blockquote{
+  margin:18px 0;padding:13px 18px;background:#f7f9fc;border-left:3px solid #2f66e0;
+  border-radius:0 7px 7px 0;color:#414a5a;font-size:14.2px;
+}
+#doc blockquote p:last-child{margin-bottom:0}
+#doc blockquote blockquote{margin:10px 0 0;background:#fff;border-left-color:#c9d6f5}
+
+/* ---------- 行内代码 & 代码块 ---------- */
+code{
+  font-family:"SF Mono",Menlo,Consolas,"Courier New",monospace;font-size:.875em;
+  background:#f0f2f6;color:#c0342d;padding:1.5px 5px;border-radius:4px;
+}
+.code-wrap{margin:16px 0;border:1px solid #e3e6ec;border-radius:8px;overflow:hidden;background:#fbfcfe}
+.code-head{
+  display:flex;align-items:center;justify-content:space-between;padding:6px 12px;
+  background:#f3f5f9;border-bottom:1px solid #e6e9ef;
+}
+.code-lang{font-size:11px;color:#8a90a0;font-weight:600;letter-spacing:.6px;text-transform:uppercase;font-family:Consolas,monospace}
+.code-copy{
+  border:1px solid #dfe3ea;background:#fff;color:#6b7280;font-size:11.5px;cursor:pointer;
+  border-radius:5px;padding:2px 9px;font-family:inherit;transition:.15s;
+}
+.code-copy:hover{border-color:#2f66e0;color:#2f66e0}
+.code-copy.done{border-color:#12a05c;color:#12a05c}
+pre.code{
+  margin:0;padding:14px 16px;overflow-x:auto;font-size:12.9px;line-height:1.68;
+  font-family:"SF Mono",Menlo,Consolas,"Courier New",monospace;color:#2b3240;
+  background:transparent;tab-size:4;
+}
+pre.code code{background:none;padding:0;color:inherit;font-size:inherit;border-radius:0}
+.tk-c{color:#8d97a8;font-style:italic}
+.tk-s{color:#1a7f52}
+.tk-k{color:#a13dbe;font-weight:600}
+.tk-b{color:#2f66e0}
+.tk-n{color:#b8541f}
+.tk-p{color:#c0342d;font-weight:600}
+.tk-f{color:#0b7a8a}
+
+/* ---------- 表格 ---------- */
+.table-wrap{margin:16px 0;overflow-x:auto;border:1px solid #e3e6ec;border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13.6px;background:#fff}
+th,td{padding:9px 13px;border-bottom:1px solid #edeff4;text-align:left;vertical-align:top}
+th{background:#f7f9fc;font-weight:650;color:#39404e;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fafbfe}
+td code{font-size:12.4px}
+
+/* ---------- 工具部件 ---------- */
+#top-btn{
+  position:fixed;right:26px;bottom:26px;width:42px;height:42px;border-radius:50%;
+  background:#fff;border:1px solid #e0e3ea;color:#5a6371;cursor:pointer;font-size:17px;
+  box-shadow:0 3px 14px rgba(20,30,60,.09);opacity:0;pointer-events:none;transition:.22s;z-index:55;
+}
+#top-btn.show{opacity:1;pointer-events:auto}
+#top-btn:hover{color:#2f66e0;border-color:#2f66e0;transform:translateY(-2px)}
+#menu-btn{
+  display:none;position:fixed;left:14px;top:14px;z-index:70;width:40px;height:40px;border-radius:9px;
+  background:#fff;border:1px solid #e0e3ea;box-shadow:0 2px 10px rgba(20,30,60,.08);
+  cursor:pointer;font-size:17px;color:#39404e;
+}
+@media (max-width:1080px){
+  #side{transform:translateX(-100%);transition:transform .24s ease;box-shadow:0 0 30px rgba(20,30,60,.12)}
+  #side.open{transform:none}
+  #main{margin-left:0}
+  #menu-btn{display:block}
+  #doc{padding:64px 20px 0}
+  .doc-title{font-size:25px}
+  #doc h2{font-size:20px}
+}
+@media print{
+  #side,#top-btn,#menu-btn,#progress{display:none}
+  #main{margin:0}#doc{max-width:none;padding:0}
+  #doc h2{page-break-after:avoid}table,.code-wrap{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<button id="menu-btn" type="button">&#9776;</button>
+<nav id="side">
+  <div class="brand">
+    <b>EquiBond 项目文档</b>
+    <span>v1.1 ｜ 源件更新于 2026-10-26 21:19</span>
+    <a class="home" href="index.html">&larr; 打开系统主页</a>
+  </div>
+  <input id="tocsearch" placeholder="筛选目录…" autocomplete="off">
+  <div id="toc"><a class="h2" href="#目录">目录</a>
+    <a class="h2" href="#一项目概述">一、项目概述</a>
+    <a class="h3" href="#11-这个系统回答什么问题">1.1 这个系统回答什么问题</a>
+    <a class="h3" href="#12-设计原则">1.2 设计原则</a>
+    <a class="h3" href="#13-当前数据快照">1.3 当前数据快照</a>
+    <a class="h2" href="#二快速开始">二、快速开始</a>
+    <a class="h3" href="#21-三种运行方式">2.1 三种运行方式</a>
+    <a class="h3" href="#22-在手机上查看">2.2 在手机上查看</a>
+    <a class="h3" href="#23-环境要求">2.3 环境要求</a>
+    <a class="h3" href="#24-命令行">2.4 命令行</a>
+    <a class="h2" href="#三系统架构">三、系统架构</a>
+    <a class="h3" href="#31-数据流">3.1 数据流</a>
+    <a class="h3" href="#32-目录结构">3.2 目录结构</a>
+    <a class="h3" href="#33-模块职责">3.3 模块职责</a>
+    <a class="h2" href="#四数据层">四、数据层</a>
+    <a class="h3" href="#41-三份原始-csv">4.1 三份原始 CSV</a>
+    <a class="h4" href="#hs300_valuation_monthlycsv--指数估值">hs300_valuation_monthly.csv —— 指数估值</a>
+    <a class="h4" href="#hs300_price_monthlycsv--指数行情">hs300_price_monthly.csv —— 指数行情</a>
+    <a class="h4" href="#cgb_yield_dailycsv--国债收益率曲线日频">cgb_yield_daily.csv —— 国债收益率曲线（日频）</a>
+    <a class="h3" href="#42-build_datasetpy-的对齐规则">4.2 build_dataset.py 的对齐规则</a>
+    <a class="h3" href="#43-datasetjs-结构">4.3 dataset.js 结构</a>
+    <a class="h2" href="#五计算引擎-enginejs">五、计算引擎 engine.js</a>
+    <a class="h3" href="#51-函数总览">5.1 函数总览</a>
+    <a class="h3" href="#52-buildseries--派生指标">5.2 buildSeries —— 派生指标</a>
+    <a class="h4" href="#股票端月收益reteq">股票端月收益：retEq</a>
+    <a class="h4" href="#债券端月收益retbd">债券端月收益：retBd</a>
+    <a class="h4" href="#修正久期推导">修正久期推导</a>
+    <a class="h3" href="#53-rollingstats--滚动标准化">5.3 rollingStats —— 滚动标准化</a>
+    <a class="h3" href="#54-equityweight--信号--仓位">5.4 equityWeight —— 信号 → 仓位</a>
+    <a class="h3" href="#55-perfmetrics--绩效指标">5.5 perfMetrics —— 绩效指标</a>
+    <a class="h3" href="#56-backtestseries-cfg--回测">5.6 backtest(series, cfg) —— 回测</a>
+    <a class="h3" href="#57-currentsnapshot--当前读数">5.7 currentSnapshot —— 当前读数</a>
+    <a class="h3" href="#58-forwardreturns--历史类比">5.8 forwardReturns —— 历史类比</a>
+    <a class="h3" href="#59-scenarios--情景推演矩阵">5.9 scenarios —— 情景推演矩阵</a>
+    <a class="h2" href="#六渲染层-appjs">六、渲染层 app.js</a>
+    <a class="h3" href="#61-页面区块">6.1 页面区块</a>
+    <a class="h3" href="#62-图表清单">6.2 图表清单</a>
+    <a class="h3" href="#63-erp-通道图的三色分区">6.3 ERP 通道图的三色分区</a>
+    <a class="h4" href="#通道统计口径e-chan-下拉四种">通道统计口径（e-chan 下拉，四种）</a>
+    <a class="h4" href="#口径对照诊断面板erp-图卡底部可折叠">口径对照诊断面板（ERP 图卡底部，可折叠）</a>
+    <a class="h3" href="#64-净值图双视图">6.4 净值图双视图</a>
+    <a class="h3" href="#65-参数控件">6.5 参数控件</a>
+    <a class="h3" href="#66-手机端自适应">6.6 手机端自适应</a>
+    <a class="h2" href="#七数据更新机制">七、数据更新机制</a>
+    <a class="h3" href="#71-各字段的自动更新能力">7.1 各字段的自动更新能力</a>
+    <a class="h3" href="#72-pe-的滚动推算">7.2 PE 的滚动推算</a>
+    <a class="h3" href="#73-财报期失真与-calibrationjson">7.3 财报期失真与 calibration.json</a>
+    <a class="h3" href="#74-国债收益率的缺口">7.4 国债收益率的缺口</a>
+    <a class="h3" href="#75-页面上的新鲜度反馈">7.5 页面上的新鲜度反馈</a>
+    <a class="h2" href="#八使用指南">八、使用指南</a>
+    <a class="h3" href="#81-页面从上往下怎么读">8.1 页面从上往下怎么读</a>
+    <a class="h3" href="#82-典型操作">8.2 典型操作</a>
+    <a class="h3" href="#83-三种信号口径怎么选">8.3 三种信号口径怎么选</a>
+    <a class="h2" href="#九参数调优与敏感性">九、参数调优与敏感性</a>
+    <a class="h3" href="#91-回测基准默认参数2012-01--2026-105bp-单次成本178-个月">9.1 回测基准（默认参数，2012-01 ~ 2026-10，5bp 单次成本，178 个月）</a>
+    <a class="h3" href="#92-敏感性规律">9.2 敏感性规律</a>
+    <a class="h3" href="#93-警惕过拟合">9.3 警惕过拟合</a>
+    <a class="h2" href="#十测试与验证">十、测试与验证</a>
+    <a class="h3" href="#101-引擎冒烟测试">10.1 引擎冒烟测试</a>
+    <a class="h3" href="#102-浏览器端验证">10.2 浏览器端验证</a>
+    <a class="h3" href="#103-更新脚本的可重复运行性">10.3 更新脚本的可重复运行性</a>
+    <a class="h2" href="#十一扩展开发指南">十一、扩展开发指南</a>
+    <a class="h3" href="#111-换一个指数如换成中证500--上证50">11.1 换一个指数（如换成中证500 / 上证50）</a>
+    <a class="h3" href="#112-新增一个信号">11.2 新增一个信号</a>
+    <a class="h3" href="#113-新增国债收益率数据源">11.3 新增国债收益率数据源</a>
+    <a class="h3" href="#114-想把回测频率换成日频">11.4 想把回测频率换成日频</a>
+    <a class="h3" href="#115-接入定时自动更新">11.5 接入定时自动更新</a>
+    <a class="h2" href="#十二已知局限与风险提示">十二、已知局限与风险提示</a>
+    <a class="h3" href="#121-方法论局限">12.1 方法论局限</a>
+    <a class="h3" href="#122-这个模型不做什么">12.2 这个模型不做什么</a>
+    <a class="h3" href="#123-免责声明">12.3 免责声明</a>
+    <a class="h2" href="#十三故障排查-faq">十三、故障排查 FAQ</a>
+    <a class="h2" href="#附录-a字段字典">附录 A：字段字典</a>
+    <a class="h3" href="#datasetjs-每行月度">dataset.js 每行（月度）</a>
+    <a class="h3" href="#seriesbuildseries-输出">series（buildSeries 输出）</a>
+    <a class="h3" href="#配置对象-cfg">配置对象 cfg</a>
+    <a class="h3" href="#主题配色appjs-的-c-对象">主题配色（app.js 的 C 对象）</a>
+    <a class="h2" href="#附录-b命令与文件速查">附录 B：命令与文件速查</a>
+    <a class="h3" href="#命令">命令</a>
+    <a class="h3" href="#关键文件对照表">关键文件对照表</a>
+    <a class="h3" href="#更新数据的最小流程">更新数据的最小流程</a>
+    <div id="toc-empty" class="none" style="display:none">无匹配章节</div>
+  </div>
+</nav>
+<div id="main"><article id="doc"><h1 id="equibond--股债性价比系统--项目文档" class="doc-title">EquiBond · 股债性价比系统 —— 项目文档</h1><blockquote><p>把&quot;一分钟宏观模型 —— <strong>投资回报 VS 债券利息</strong>&quot;工程化成一个可交互、可回测、可复现的股债配置系统。</p><p>文档版本：v1.1 ｜ 最后修订：2026-10-26 ｜ 对应代码：<code>index.html</code> / <code>app.js</code> / <code>engine.js</code> / <code>scripts/*.py</code></p></blockquote><hr><h2 id="目录">目录</h2><ul class="lvl0"><li><a href="#一项目概述">一、项目概述</a></li><li><a href="#二快速开始">二、快速开始</a></li><li><a href="#三系统架构">三、系统架构</a></li><li><a href="#四数据层">四、数据层</a></li><li><a href="#五计算引擎-enginejs">五、计算引擎 engine.js</a></li><li><a href="#六渲染层-appjs">六、渲染层 app.js</a></li><li><a href="#七数据更新机制">七、数据更新机制</a></li><li><a href="#八使用指南">八、使用指南</a></li><li><a href="#九参数调优与敏感性">九、参数调优与敏感性</a></li><li><a href="#十测试与验证">十、测试与验证</a></li><li><a href="#十一扩展开发指南">十一、扩展开发指南</a></li><li><a href="#十二已知局限与风险提示">十二、已知局限与风险提示</a></li><li><a href="#十三故障排查-faq">十三、故障排查 FAQ</a></li><li><a href="#附录-a字段字典">附录 A：字段字典</a></li><li><a href="#附录-b命令与文件速查">附录 B：命令与文件速查</a></li></ul><hr><h2 id="一项目概述">一、项目概述</h2><h3 id="11-这个系统回答什么问题">1.1 这个系统回答什么问题</h3><p>一个最朴素的资产配置问题：<strong>当下这笔钱，放股票好还是放债券好？</strong></p><p>债券有明确的&quot;票面利息&quot;，一眼就能看到收益率；股票没有——但它有<strong>盈利</strong>。把市盈率倒过来看，就得到一个可以和债券收益率直接放在同一刻度上比较的数字。</p><p>于是整个决策被压缩成一个差值：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">text</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>盈利收益率  E/P  = 100 / PE(TTM)              ← 股票的隐含&quot;投资回报率&quot;
+无风险收益率 Y10 = 10 年期国债到期收益率        ← 债券的&quot;利息&quot;
+
+股权风险溢价 ERP = E/P − Y10                   ← 承担股票风险换来的额外补偿</code></pre></div><div class="table-wrap"><table><thead><tr><th>ERP 状态</th><th>含义</th><th>系统给出的动作</th></tr></thead><tbody><tr><td>处于历史高位（&gt; +1σ）</td><td>股票相对债券很便宜，补偿丰厚</td><td>超配股票（默认最高 90%）</td></tr><tr><td>处于中性区间（±1σ）</td><td>两者性价比接近</td><td>维持基准比例</td></tr><tr><td>处于历史低位（&lt; −1σ）</td><td>溢价被压缩，债券的确定性更有吸引力</td><td>减配股票（默认最低 20%）</td></tr></tbody></table></div><p><strong>这就是全部逻辑。</strong> 剩下的工作是把这条主线做严谨：用真实数据算、把绝对值换成历史分位、把分位映射成仓位、用一个不含未来函数的框架回测它。</p><h3 id="12-设计原则">1.2 设计原则</h3><div class="table-wrap"><table><thead><tr><th>原则</th><th>具体体现</th></tr></thead><tbody><tr><td><strong>只用真实数据</strong></td><td>全部是 Wind / 交易所口径的真实历史序列，没有任何随机数或模拟数据</td></tr><tr><td><strong>纯静态、零依赖运行</strong></td><td>看页面不需要 Node、不需要 Python、不需要联网，双击 HTML 即可</td></tr><tr><td><strong>可复现</strong></td><td>数据全部落盘为 CSV，任何人用同样的 CSV 跑同样的脚本得到同样的结果</td></tr><tr><td><strong>防未来函数</strong></td><td>严格用 <code>t−1</code> 期信号决定 <code>t</code> 期仓位（详见 <a href="#56-backtestseries-cfg--回测">5.6</a>）</td></tr><tr><td><strong>计算与展示分离</strong></td><td><code>engine.js</code> 是纯函数无 DOM，可在 Node 里直接单测；<code>app.js</code> 只负责渲染</td></tr><tr><td><strong>参数全暴露</strong></td><td>信号口径、回看窗口、映射方式、仓位区间、再平衡频率、成本全部可调，改了立刻重算</td></tr></tbody></table></div><h3 id="13-当前数据快照">1.3 当前数据快照</h3><blockquote><p>该快照由 <code>data/dataset.js</code> 的 <code>meta</code> 字段自动读取，每次运行更新脚本都会刷新。</p></blockquote><div class="table-wrap"><table><thead><tr><th>项目</th><th>值</th></tr></thead><tbody><tr><td>标的组合</td><td>沪深300 (000300.SH) × 10 年期国债</td></tr><tr><td>样本区间</td><td>2012-01 ~ 2026-10</td></tr><tr><td>可用月份</td><td><strong>178</strong> 个月（总面板 185 月，其中 7 月因缺估值或收益率被剔除）</td></tr><tr><td>最新数据点</td><td>2026-10-26</td></tr><tr><td>PE(TTM) / PB</td><td>12.85 / 1.36</td></tr><tr><td>股息率</td><td>3.03%</td></tr><tr><td>E/P（盈利收益率）</td><td>7.79%</td></tr><tr><td>Y10（10 年国债）</td><td>1.64%（取自 2026-10-23）</td></tr><tr><td><strong>ERP</strong></td><td><strong>6.14 pct</strong></td></tr><tr><td>Wind 权威校准锚点</td><td>2026-10-23（<code>data/raw/calibration.json</code>）</td></tr></tbody></table></div><hr><h2 id="二快速开始">二、快速开始</h2><h3 id="21-三种运行方式">2.1 三种运行方式</h3><p><strong>方式一：双击 <code>start.bat</code>（推荐，会顺带更新数据）</strong></p><p>自动执行：联网拉取最新行情 → 推算估值 → 重建数据集 → 打开浏览器。</p><p><strong>方式二：直接双击 <code>index.html</code></strong></p><p>数据在 <code>data/dataset.js</code> 里以 <code>&lt;script&gt;</code> 变量形式内嵌，因此 <code>file://</code> 协议下也能完整渲染，不需要服务器。适合只看历史、不想联网的场景。</p><p><strong>方式三：本地静态服务器</strong></p><p>如果浏览器策略限制了本地文件：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">bash</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code><span class="tk-k">cd</span> <span class="tk-s">&quot;G:/Projects/workbuddy projects/EquiBond&quot;</span>
+<span class="tk-k">python</span> -m http.server <span class="tk-n">8777</span>
+<span class="tk-c"># 浏览器打开 http://127.0.0.1:8777</span></code></pre></div><h3 id="22-在手机上查看">2.2 在手机上查看</h3><p><strong>双击 <code>start-mobile.bat</code></strong>，会在本机起一个局域网静态服务（默认端口 8765），控制台打印：</p><ul class="lvl0"><li>局域网地址（如 <code><a href="http://192.168.1.7:8765/" target="_blank" rel="noopener">http://192.168.1.7:8765/</a></code>）——手机浏览器直接输入；</li><li>终端二维码 —— 手机相机 / 微信扫一扫直接打开。</li></ul><p>使用要点：</p><div class="table-wrap"><table><thead><tr><th>事项</th><th>说明</th></tr></thead><tbody><tr><td>网络要求</td><td>手机与电脑连<strong>同一个 WiFi / 路由器</strong></td></tr><tr><td>首次运行</td><td>Windows 弹出防火墙提示时，勾选「专用网络」并允许</td></tr><tr><td>打不开</td><td>依次检查：① 是否同一 WiFi；② 防火墙是否放行 Python；③ 路由器是否开了「AP 隔离」</td></tr><tr><td>缓存</td><td>服务端已发 <code>Cache-Control: no-store</code>，数据更新后手机刷新即见最新</td></tr><tr><td>换端口</td><td><code>start-mobile.bat --port 8000</code>（端口被占时会自动顺延）</td></tr></tbody></table></div><p>页面本身已做手机端适配（≤720px 生效）：KPI 固定两列、图表压缩留白并加高、 回测表与情景矩阵横向滑动、表单控件放大到 16px 防 iOS 聚焦缩放、tooltip 限制在屏内。</p><p><strong>添加到主屏幕</strong>：在手机浏览器菜单里选「添加到主屏幕」，之后从桌面图标点开即全屏 运行（无地址栏），效果接近原生 App。图标与名称由 <code>manifest.webmanifest</code> + <code>icon.svg</code> 提供。</p><p>安全边界：<code>serve.py</code> 只服务项目目录内的静态文件，且仅监听局域网可达的本机网卡； 它<strong>不做任何鉴权</strong>，请不要把 8765 端口映射到公网。若需要在任何网络下随时查看， 可用内网穿透或静态托管方案自行部署（把整个项目目录原样上传即可）。</p><h3 id="23-环境要求">2.3 环境要求</h3><div class="table-wrap"><table><thead><tr><th>场景</th><th>要求</th></tr></thead><tbody><tr><td><strong>仅查看页面</strong></td><td>任何现代浏览器，无需 Python / Node</td></tr><tr><td><strong>更新数据</strong></td><td>Python 3.x（任意版本，仅用标准库 <code>urllib</code> / <code>csv</code> / <code>json</code>，无第三方包）</td></tr><tr><td><strong>跑引擎单测</strong></td><td>Node.js（任意版本，仅用于 <code>smoke_test.js</code>）</td></tr></tbody></table></div><h3 id="24-命令行">2.4 命令行</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">bash</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code><span class="tk-k">python</span> scripts/update.py            <span class="tk-c"># 联网增量更新 + 重建 dataset.js</span>
+<span class="tk-k">python</span> scripts/update.py --dry-run  <span class="tk-c"># 只拉取并打印推算过程，不写任何文件</span>
+<span class="tk-k">python</span> scripts/update.py --offline  <span class="tk-c"># 完全不联网，仅用现有 CSV 重建 dataset.js</span>
+<span class="tk-k">python</span> scripts/update.py --calibrate  <span class="tk-c"># 在 Wind 校准过 PE 之后运行，记录权威锚点日期</span>
+
+node scripts/smoke_test.js          <span class="tk-c"># 引擎冒烟测试（回归用）</span>
+<span class="tk-k">python</span> scripts/build_dataset.py     <span class="tk-c"># 只重建数据集，不联网、不推算</span></code></pre></div><p>Windows 下也可以直接把参数拖给 <code>start.bat</code>：<code>start.bat --dry-run</code>。</p><hr><h2 id="三系统架构">三、系统架构</h2><h3 id="31-数据流">3.1 数据流</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">text</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>                          ┌──────────────── 一次性/低频 ─────────────────┐
+  Wind MCP                腾讯自选股 MCP                                  │
+ (指数估值)                (行情+国债曲线)                                 │
+     │                          │                                        │
+     ▼                          ▼                                        │
+hs300_valuation_        hs300_price_      cgb_yield_                      │
+monthly.csv             monthly.csv       daily.csv                       │
+     └──────────────┬──────────────┘           │                          │
+                    │                          │                          │
+                    ▼                          ▼                          │
+            scripts/build_dataset.py  ←── scripts/update.py ──────────────┘
+            （对齐成月度面板）              （每日增量：新浪/东财实时价
+                    │                         → 按 anchor 推算 PE/PB/股息
+                    ▼                         → 调 build_dataset → 写 meta.refresh）
+            data/dataset.js
+            window.EQBD = { meta, rows[] }
+                    │
+                    ▼
+            engine.js  （buildSeries → rollingStats → equityWeight
+                         → backtest / currentSnapshot / forwardReturns / scenarios）
+                    │
+                    ▼
+            app.js  →  ECharts × 5 张图 + KPI 卡 + 情景矩阵 + 绩效表</code></pre></div><h3 id="32-目录结构">3.2 目录结构</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">text</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>EquiBond/
+├── index.html                  前端单页骨架（DOM 结构 + 区块划分 + PWA meta）
+├── styles.css                  浅色主题样式，A 股涨红跌绿，含 ≤720px 手机媒体查询
+├── app.js                      渲染层：KPI、仪表盘、图表、矩阵、控件绑定（含窄屏自适应）
+├── engine.js                   计算核心（纯函数，无 DOM，Node 可直接 require）
+├── start.bat                   Windows 一键启动器（更新数据 → 打开页面）
+├── start-mobile.bat            一键起局域网服务，供手机扫码访问
+├── manifest.webmanifest        PWA 清单：手机「添加到主屏幕」后全屏打开
+├── icon.svg                    主屏幕 / 标签页图标（红色 EB）
+├── PROJECT.md                  本文件
+├── README.md                   快速上手（简版）
+├── vendor/
+│   └── echarts.min.js          本地化的 ECharts 5.5.1，无外网依赖
+├── data/
+│   ├── dataset.js              build_dataset.py 的产物，前端直接 &lt;script&gt; 加载
+│   └── raw/
+│       ├── hs300_valuation_monthly.csv   沪深300 月末 PE / PB / 股息率
+│       ├── hs300_price_monthly.csv       沪深300 月线收盘价
+│       ├── cgb_yield_daily.csv           银行间国债收益率曲线（日频）
+│       └── calibration.json              上次 Wind 权威校准的日期
+└── scripts/
+    ├── update.py               增量更新器（联网 → 推算 → 重建）
+    ├── build_dataset.py        CSV → 月度面板 → dataset.js
+    ├── serve.py                局域网静态服务（打印地址 + 终端二维码，禁缓存）
+    └── smoke_test.js           Node 冒烟测试</code></pre></div><h3 id="33-模块职责">3.3 模块职责</h3><div class="table-wrap"><table><thead><tr><th>文件</th><th>职责</th><th style="text-align:center">是否依赖 DOM</th><th>可测试性</th></tr></thead><tbody><tr><td><code>engine.js</code></td><td>全部数学：派生指标、收益合成、滚动统计、仓位映射、回测、绩效、情景推演</td><td style="text-align:center">❌</td><td>✅ Node 直接 require</td></tr><tr><td><code>app.js</code></td><td>读 <code>window.EQBD</code> → 调 engine → 渲染图表与 DOM</td><td style="text-align:center">✅</td><td>靠浏览器探针</td></tr><tr><td><code>index.html</code></td><td>页面结构、控件 DOM、<code>&lt;script&gt;</code> 加载顺序</td><td style="text-align:center">—</td><td>—</td></tr><tr><td><code>styles.css</code></td><td>主题变量、卡片/表格/控件样式</td><td style="text-align:center">—</td><td>—</td></tr><tr><td><code>build_dataset.py</code></td><td>三份 CSV 对齐成月度面板，输出 JS</td><td style="text-align:center">❌</td><td>✅</td></tr><tr><td><code>update.py</code></td><td>联网取实时价、按锚点推算估值、写回 CSV、调 build、写 meta</td><td style="text-align:center">❌</td><td>✅ <code>--dry-run</code></td></tr><tr><td><code>smoke_test.js</code></td><td>引擎回归：收益合理性、NaN 检查、方向性、情景矩阵</td><td style="text-align:center">❌</td><td>✅</td></tr></tbody></table></div><hr><h2 id="四数据层">四、数据层</h2><h3 id="41-三份原始-csv">4.1 三份原始 CSV</h3><h4 id="hs300_valuation_monthlycsv--指数估值"><code>hs300_valuation_monthly.csv</code> —— 指数估值</h4><div class="code-wrap"><div class="code-head"><span class="code-lang">csv</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>date,pe,pb,div
+2012-01-31,11.05,1.63,2.31</code></pre></div><div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th><th>单位</th><th>口径</th></tr></thead><tbody><tr><td><code>date</code></td><td>月末最后交易日</td><td>YYYY-MM-DD</td><td>每自然月一条</td></tr><tr><td><code>pe</code></td><td>市盈率 TTM</td><td>倍</td><td><strong>Wind 沪深300 指数加权口径</strong>（非整体法）</td></tr><tr><td><code>pb</code></td><td>市净率</td><td>倍</td><td>同上</td></tr><tr><td><code>div</code></td><td>股息率</td><td>%</td><td>同上，近 12 个月分红 / 市值</td></tr></tbody></table></div><blockquote><p>当前 178 行（2012-01 ~ 2026-10）。这是<strong>唯一需要 Wind 权限</strong>的数据，也是整个系统的估值基石。</p></blockquote><h4 id="hs300_price_monthlycsv--指数行情"><code>hs300_price_monthly.csv</code> —— 指数行情</h4><div class="code-wrap"><div class="code-head"><span class="code-lang">csv</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>date,close
+2011-06-30,2963.31</code></pre></div><p>月线收盘价。面板从 2011-06 开始（比估值早半年），目的是让第一个可用月也能算出收益率（收益率需要上月收盘价做分母）。</p><h4 id="cgb_yield_dailycsv--国债收益率曲线日频"><code>cgb_yield_daily.csv</code> —— 国债收益率曲线（日频）</h4><div class="code-wrap"><div class="code-head"><span class="code-lang">csv</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>date,y10,y1,y30
+2012-01-04,3.42,3.32,4.12</code></pre></div><p>银行间国债到期收益率。系统主用 <code>y10</code>，<code>y1</code> / <code>y30</code> 保留备用（未来做期限利差信号）。当前 3593 行。</p><h3 id="42-build_datasetpy-的对齐规则">4.2 <code>build_dataset.py</code> 的对齐规则</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">python</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code><span class="tk-c"># 1. 估值：同月多条取最后一条（月末值）</span>
+val_by_month[month_key(d)] = {...}   <span class="tk-c"># 后写覆盖</span>
+
+<span class="tk-c"># 2. 价格：同上</span>
+px_by_month[month_key(d)] = {...}
+
+<span class="tk-c"># 3. 收益率：日频 → 取每月最后一条观测</span>
+yld_by_month[month_key(d)] = {...}
+
+<span class="tk-c"># 4. 面板骨架 = 三个源的月份并集（且 ≥ 2011-01）</span>
+<span class="tk-c"># 5. ok = 1 当且仅当 pe / div / close / y10 四项齐全</span></code></pre></div><p><strong>为什么要保留 <code>ok=0</code> 的月份？</strong> 因为收益率计算需要用前一行做分母。如果直接把不可用月份删掉，会产生虚假的相邻关系，导致某个月的收益率被算成横跨两个月。<code>buildSeries</code> 内部会跳过 <code>ok=0</code> 的行，但 <code>prev</code> 仍然取原始行的上一行，所以 <code>ok=0</code> 的月份只会被跳过、不会被&quot;跳接&quot;。</p><h3 id="43-datasetjs-结构">4.3 <code>dataset.js</code> 结构</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code><span class="tk-b">window</span>.EQBD = {
+  meta: {
+    generated: <span class="tk-s">&quot;2026-10-26 14:50:55&quot;</span>,
+    index: <span class="tk-s">&quot;沪深300 (000300.SH)&quot;</span>,
+    valuation_source: <span class="tk-s">&quot;Wind 指数加权口径 PE/PB/股息率(月末最后交易日)&quot;</span>,
+    yield_source: <span class="tk-s">&quot;银行间国债收益率曲线 10年期(月末最后交易日)&quot;</span>,
+    months_total: <span class="tk-n">185</span>,
+    months_usable: <span class="tk-n">178</span>,
+    range: [<span class="tk-s">&quot;2012-01&quot;</span>, <span class="tk-s">&quot;2026-10&quot;</span>],
+    latest: { date, pe, pb, div, y10, close },
+    refresh: {            <span class="tk-c">// 由 update.py 追加，build_dataset 单独跑时不存在</span>
+      refreshed_at, anchor_date, anchor_age_days, anchor_expired,
+      live: { date, close, source }, y10_source, changes
+    }
+  },
+  rows: [ { m, d, pe, pb, div, close, y10, y1, y30, ok }, ... ]
+};</code></pre></div><blockquote><p><strong>为什么用 JS 而不是 JSON？</strong> 因为 JSON 用 <code>fetch</code> 加载在 <code>file://</code> 协议下会被 CORS 拦截。写成 <code>&lt;script&gt;</code> 赋值语句，双击 HTML 就能用。</p></blockquote><hr><h2 id="五计算引擎-enginejs">五、计算引擎 <code>engine.js</code></h2><p>引擎导出为一个 IIFE，同时兼容浏览器（<code>window.EQBEngine</code>）和 Node（<code>module.exports</code>）。</p><h3 id="51-函数总览">5.1 函数总览</h3><div class="table-wrap"><table><thead><tr><th>函数</th><th>输入</th><th>输出</th><th>用途</th></tr></thead><tbody><tr><td><code>buildSeries(rows)</code></td><td>原始面板行</td><td>带派生指标 + 月收益的序列</td><td>面板构建</td></tr><tr><td><code>rollingStats(series,i,win,key)</code></td><td>面板、位置、窗口、字段</td><td><code>{n,value,mean,sd,pct,z,min,max,p10…p90}</code></td><td>滚动标准化</td></tr><tr><td><code>equityWeight(p,z,cfg)</code></td><td>分位、Z、配置</td><td>股票仓位 0~1</td><td>信号→仓位</td></tr><tr><td><code>perfMetrics(rets,rfAnnual)</code></td><td>月度收益数组</td><td><code>{total,ann,vol,sharpe,maxDD,calmar,winRate,navSeries}</code></td><td>绩效</td></tr><tr><td><code>backtest(series,cfg)</code></td><td>面板 + 配置</td><td>四组绩效 + 仓位/换手历史</td><td>回测</td></tr><tr><td><code>currentSnapshot(series,cfg)</code></td><td>面板 + 配置</td><td>当前读数 + 三种口径的统计</td><td>顶部 KPI</td></tr><tr><td><code>forwardReturns(series,cfg,h)</code></td><td>面板 + 前瞻月数</td><td>历史类比统计</td><td>「历史上类似时点之后……」</td></tr><tr><td><code>scenarios(series,cfg,peSteps,bpSteps)</code></td><td>面板 + 步长</td><td>二维推演结果</td><td>情景矩阵</td></tr><tr><td><code>modDuration(yieldPct)</code></td><td>收益率 %</td><td>修正久期（年）</td><td>债券收益合成</td></tr><tr><td><code>quantile / percentileRank / mean / stdev / clamp</code></td><td>—</td><td>—</td><td>统计工具</td></tr></tbody></table></div><h3 id="52-buildseries--派生指标">5.2 <code>buildSeries</code> —— 派生指标</h3><p>对每一行计算：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>ep       = <span class="tk-n">100</span> / pe                 <span class="tk-c">// 盈利收益率 %</span>
+erp      = ep - y10                 <span class="tk-c">// 差值式信号</span>
+ratio    = ep / y10                 <span class="tk-c">// 比值式信号</span>
+dyspread = div - y10                <span class="tk-c">// 股息式信号</span></code></pre></div><h4 id="股票端月收益reteq">股票端月收益：<code>retEq</code></h4><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>retEqPrice = close_t / close_{t-<span class="tk-n">1</span>} - <span class="tk-n">1</span>
+retEq      = retEqPrice + div_{t-<span class="tk-n">1</span>} / <span class="tk-n">100</span> / <span class="tk-n">12</span></code></pre></div><p><strong>为什么加股息：</strong> 沪深300 的月线收盘是<strong>价格指数</strong>，不含分红。为了做总收益口径的回测，补上月股息率的 1/12 作为再投资近似。这是近似而非精确（真实除息日的分红现金再投资会有微小差异），但对月度频率的策略判断影响很小。</p><h4 id="债券端月收益retbd">债券端月收益：<code>retBd</code></h4><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>carry = y10_{t-<span class="tk-n">1</span>} / <span class="tk-n">100</span> / <span class="tk-n">12</span>            <span class="tk-c">// 持有一个月的票息收入</span>
+Δy    = (y10_t - y10_{t-<span class="tk-n">1</span>}) / <span class="tk-n">100</span>       <span class="tk-c">// 收益率变动</span>
+retBd = carry - D_mod × Δy              <span class="tk-c">// 票息 + 资本利得</span></code></pre></div><p><strong>原理：</strong> 债券总收益 ≈ 票息收益 − 修正久期 × 收益率变动。久期衡量价格对利率的敏感度，所以利率下行（Δy&lt;0）时债券净值上升，<code>−D×Δy</code> 为正。这个方法把一条收益率曲线序列合成成了&quot;持续持有 10 年期国债并每月滚动&quot;的总收益指数，覆盖了票息和价格波动两部分。</p><h4 id="修正久期推导">修正久期推导</h4><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code><span class="tk-k">function</span> modDuration(yieldPct) {
+  <span class="tk-k">const</span> N = <span class="tk-n">10</span>, m = <span class="tk-n">2</span>, n = N * m;              <span class="tk-c">// 10 年期，半年付息，20 期</span>
+  <span class="tk-k">const</span> y = yieldPct / <span class="tk-n">100</span>;
+  <span class="tk-k">if</span> (y &lt;= <span class="tk-n">1e-6</span>) <span class="tk-k">return</span> N;                      <span class="tk-c">// y→0 时久期趋于期限本身</span>
+  <span class="tk-k">const</span> i = y / m;                              <span class="tk-c">// 每期折现率</span>
+  <span class="tk-k">const</span> dPeriods = ((<span class="tk-n">1</span> + i) / i) * (<span class="tk-n">1</span> - <span class="tk-b">Math</span>.pow(<span class="tk-n">1</span> + i, -n));  <span class="tk-c">// Macaulay 久期（期）</span>
+  <span class="tk-k">return</span> dPeriods / (<span class="tk-n">1</span> + i) / m;                <span class="tk-c">// ÷(1+i) 得修正久期，÷m 换成年</span>
+}</code></pre></div><p>校验：YTM=2.0% → D≈9.00；YTM=4.0% → D≈8.09。符合&quot;10 年期平价国债修正久期在 8~9 之间&quot;的常识。</p><h3 id="53-rollingstats--滚动标准化">5.3 <code>rollingStats</code> —— 滚动标准化</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>start  = <span class="tk-b">window</span> &gt; <span class="tk-n">0</span> ? max(<span class="tk-n">0</span>, i - <span class="tk-b">window</span> + <span class="tk-n">1</span>) : <span class="tk-n">0</span>     <span class="tk-c">// 0 表示扩张窗口（全样本）</span>
+sample = series[start..i] 中该字段的非空值
+mean   = 算术平均
+sd     = 样本标准差（n−<span class="tk-n">1</span> 分母）
+pct    = percentileRank(sample, x)   <span class="tk-c">// 样本中 ≤ 当前值的占比</span>
+z      = (x − mean) / sd</code></pre></div><p><strong>两种窗口模式的差异很重要：</strong></p><div class="table-wrap"><table><thead><tr><th>模式</th><th><code>window</code> 值</th><th>特点</th></tr></thead><tbody><tr><td>扩张窗口</td><td><code>0</code></td><td>从样本起点算起，早期样本少、噪声大；后期稳定但反应迟钝</td></tr><tr><td>滚动窗口</td><td><code>120</code> / <code>60</code> / <code>36</code></td><td>固定回看 N 个月，<strong>自适应估值中枢下移</strong>，推荐默认用近 10 年</td></tr></tbody></table></div><blockquote><p><strong>为什么推荐滚动窗口：</strong> A 股估值中枢在 2012→2026 年间系统性下移（PE 从 11~12 倍区间降到 10 倍出头）。用全样本算分位，会把十年前的&quot;贵&quot;当成现在的&quot;正常&quot;，导致分位系统性偏高。滚动 10 年窗口能追踪这种漂移。</p></blockquote><h3 id="54-equityweight--信号--仓位">5.4 <code>equityWeight</code> —— 信号 → 仓位</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code><span class="tk-k">if</span> (map === <span class="tk-s">'pct'</span>)  t = clamp(p, <span class="tk-n">0</span>, <span class="tk-n">1</span>);                              <span class="tk-c">// 历史分位</span>
+<span class="tk-k">else</span>                t = (clamp(z, -zRange, zRange) + zRange) / (<span class="tk-n">2</span>*zRange);  <span class="tk-c">// Z 截断</span>
+w = clamp(minW + (maxW - minW) * t, <span class="tk-n">0</span>, <span class="tk-n">1</span>);</code></pre></div><div class="table-wrap"><table><thead><tr><th>映射方式</th><th>优点</th><th>缺点</th></tr></thead><tbody><tr><td><strong>历史分位线性</strong>（默认）</td><td>稳健，不受极端值影响，分布自适应</td><td>在震荡市中分位容易到两端，信号偏&quot;躁&quot;</td></tr><tr><td><strong>Z-Score 截断</strong></td><td>保留了偏离幅度信息，中间区域更平缓</td><td>受厚尾分布影响，需要 <code>zRange</code> 截断（默认 ±2σ）</td></tr></tbody></table></div><p><code>minW</code> / <code>maxW</code> 的作用是<strong>避免全仓进出</strong>——即使信号极端，也保留至少 20% 的反向资产，这在实盘中能显著降低犯错成本。默认值 20% / 90%。</p><h3 id="55-perfmetrics--绩效指标">5.5 <code>perfMetrics</code> —— 绩效指标</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>total   = nav_end − <span class="tk-n">1</span>
+ann     = nav^(<span class="tk-n">12</span>/n) − <span class="tk-n">1</span>                    <span class="tk-c">// 年化</span>
+vol     = stdev(月度收益) × √<span class="tk-n">12</span>             <span class="tk-c">// 年化波动</span>
+sharpe  = (ann − rf) / vol                  <span class="tk-c">// rf 取回测区间 Y10 均值</span>
+maxDD   = min(nav/peak − <span class="tk-n">1</span>)                 <span class="tk-c">// 最大回撤</span>
+calmar  = ann / |maxDD|
+winRate = 正收益月份占比</code></pre></div><h3 id="56-backtestseries-cfg--回测">5.6 <code>backtest(series, cfg)</code> —— 回测</h3><p><strong>这是整个系统最需要严谨的地方。</strong> 核心是这一行：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>} <span class="tk-k">else</span> <span class="tk-k">if</span> ((i - startIdx) % (cfg.rebalance || <span class="tk-n">1</span>) === <span class="tk-n">0</span>) {
+  <span class="tk-k">const</span> st = rollingStats(series, i - <span class="tk-n">1</span>, cfg.<span class="tk-b">window</span>, cfg.signal);   <span class="tk-c">// ← i-1！</span>
+  w = equityWeight(st.pct, st.z, cfg);
+}
+<span class="tk-k">const</span> ret = w * r.retEq + (<span class="tk-n">1</span> - w) * r.retBd - cost;</code></pre></div><p><strong>时序链：<code>signal(t−1) → weight(t) → return(t)</code></strong></p><p>调仓发生在第 <code>t</code> 期期初，使用的是第 <code>t−1</code> 期（已收盘）观测到的信号值。如果不做这个滞后，就相当于&quot;知道今天收盘后的 ERP 再决定今天的仓位&quot;，回测结果会漂亮得离谱但完全无效。</p><p>其他细节：</p><div class="table-wrap"><table><thead><tr><th>要素</th><th>实现</th></tr></thead><tbody><tr><td>首期建仓</td><td><code>w === null</code> 时用当期信号建仓（<code>rollingStats(series, i, ...)</code>），这是唯一允许的例外，因为它代表&quot;策略开始运行&quot;</td></tr><tr><td>再平衡</td><td>非调仓月沿用上期权重，不重算</td></tr><tr><td>交易成本</td><td>`cost =</td><td>w_t − w_{t−1}</td><td>× costBp / 10000`，仅在<strong>权重变化部分</strong>收取（合规和实际一致）</td></tr><tr><td>对照组</td><td>同时算纯股票、纯债券、60/40，用同一段收益序列，口径一致</td></tr><tr><td>无风险利率</td><td>取回测区间内 <code>y10</code> 的均值（用于夏普分母）</td></tr></tbody></table></div><p><strong>输出：</strong></p><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>{
+  dates, weights, turnover, costTotal, avgTurnover, rf,
+  strategy: perfMetrics,  <span class="tk-c">// ERP 动态轮动</span>
+  equity:   perfMetrics,  <span class="tk-c">// 沪深300 全仓（含股息）</span>
+  bond:     perfMetrics,  <span class="tk-c">// 10 年期国债全仓</span>
+  mix6040:  perfMetrics,  <span class="tk-c">// 60/40 每月再平衡（不计成本）</span>
+}</code></pre></div><h3 id="57-currentsnapshot--当前读数">5.7 <code>currentSnapshot</code> —— 当前读数</h3><p>返回末行的全部原始值 + 派生值 + <strong>三种口径的滚动统计</strong>（同时算 <code>erp</code> / <code>ratio</code> / <code>dyspread</code>，便于切换口径时不用重算）+ 建议仓位 + 修正久期。</p><h3 id="58-forwardreturns--历史类比">5.8 <code>forwardReturns</code> —— 历史类比</h3><p>回答用户最想知道的问题：<strong>&quot;现在这个信号强度，历史上出现过吗？之后发生了什么？&quot;</strong></p><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>curPct = 当前信号在回看窗口内的分位
+遍历 i ∈ [<span class="tk-n">0</span>, N−<span class="tk-n">1</span>−horizon]：
+    <span class="tk-k">if</span> rollingStats(series, i, <span class="tk-b">window</span>, key).pct &gt;= curPct:
+        记录 i 之后 horizon 个月的股票累计收益 和 债券累计收益
+统计：样本数、均值、中位数、P25/P75、胜率、相对债券超额</code></pre></div><p>⚠️ <strong>必须注意的偏差：</strong> 这个函数只统计&quot;信号 ≥ 当前&quot;的时点，是一个<strong>条件期望</strong>，天然会有幸存者倾向——如果历史上信号达到该强度的时点恰好集中在牛市的底部区间，结果就会偏乐观。样本数（<code>fw.n</code>）小于 6 时页面会明确提示&quot;参考价值有限&quot;。请把它当作<strong>参考性的历史对照</strong>，而非预测。</p><h3 id="59-scenarios--情景推演矩阵">5.9 <code>scenarios</code> —— 情景推演矩阵</h3><p>给定 PE 变动百分比（行）× Y10 变动基点（列），推演 ERP 与目标仓位：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>pe'  = basePe × (<span class="tk-n">1</span> + dPe)
+y'   = baseY + bp/<span class="tk-n">100</span>
+ep<span class="tk-s">'  = 100 / pe'</span>
+信号值 = f(ep<span class="tk-s">', y'</span>)                          <span class="tk-c">// 取决于口径</span>
+z    = (信号值 − 近期均值) / 近期标准差
+pct  = 信号值在近期样本中的分位
+weight = equityWeight(pct, z, cfg)</code></pre></div><p>注意&quot;股息式&quot;口径下股息率随价格反向变动：<code>div' = div / (1 + dPe)</code>。</p><hr><h2 id="六渲染层-appjs">六、渲染层 <code>app.js</code></h2><h3 id="61-页面区块">6.1 页面区块</h3><div class="table-wrap"><table><thead><tr><th>区块</th><th>DOM ID</th><th>内容</th></tr></thead><tbody><tr><td>核心读数</td><td><code>grid-kpi</code></td><td>E/P、Y10、ERP、股债收益比、股息率差、ERP 分位，六张卡片</td></tr><tr><td>结论与建议仓位</td><td><code>verdict</code></td><td>温度仪表盘 + 五档结论标签 + 仓位条 + 历史类比文字</td></tr><tr><td>投资回报 VS 债券利息</td><td><code>chart-yield</code></td><td>E/P 与 Y10 双线堆叠面积图，中间红色区域即 ERP</td></tr><tr><td>ERP 通道图</td><td><code>chart-erp</code></td><td>ERP + 滚动均值 ±1σ/±2σ 通道（三色分区）+ 右轴沪深300</td></tr><tr><td>参数沙盘</td><td><code>controls</code></td><td>8 个参数控件 + 重置按钮</td></tr><tr><td>策略回测</td><td><code>chart-nav</code> / <code>chart-alloc</code> / <code>t-perf</code></td><td>净值图（双视图）+ 仓位曲线 + 绩效对比表</td></tr><tr><td>情景推演矩阵</td><td><code>t-matrix</code></td><td>7×7 热力表格</td></tr><tr><td>模型说明</td><td><code>note-grid</code></td><td>4 张说明卡 + 免责声明</td></tr></tbody></table></div><h3 id="62-图表清单">6.2 图表清单</h3><div class="table-wrap"><table><thead><tr><th>图表</th><th>类型</th><th>关键设计</th></tr></thead><tbody><tr><td><code>gauge</code></td><td>仪表盘</td><td>0~100 映射 ERP 分位，指针颜色随区间变化</td></tr><tr><td><code>chart-yield</code></td><td>双线堆叠面积 + 右轴</td><td>蓝线 Y10 + 红色填充区 = ERP，虚线标注当前 ERP 值；<strong>右轴对数轴实线叠加沪深300</strong></td></tr><tr><td><code>chart-erp</code></td><td>双轴 + 堆叠通道</td><td>左轴 ERP + ±σ 三色通道 + ±1σ 虚线边界；<strong>右轴对数轴实线叠加沪深300</strong></td></tr><tr><td><code>chart-nav</code></td><td>多线 + dataZoom</td><td>支持「相对沪深300」/「净值（对数）」双视图</td></tr><tr><td><code>chart-alloc</code></td><td>阶梯面积图</td><td>股票仓位历史，<code>step: 'end'</code> 体现&quot;持有整月&quot;</td></tr></tbody></table></div><h3 id="63-erp-通道图的三色分区">6.3 ERP 通道图的三色分区</h3><div class="table-wrap"><table><thead><tr><th>区域</th><th>颜色</th><th>透明度</th><th>含义</th></tr></thead><tbody><tr><td>高于 +1σ</td><td>红 <code>#d1362d</code></td><td>.20</td><td>股票偏便宜（ERP 厚）</td></tr><tr><td>±1σ 之间</td><td>灰 <code>#8e97a6</code></td><td>.10</td><td>中性</td></tr><tr><td>低于 −1σ</td><td>绿 <code>#12a05c</code></td><td>.16</td><td>股票偏贵（ERP 薄）</td></tr></tbody></table></div><blockquote><p><strong>实现坑（重要）：</strong> ECharts 的堆叠面积图中，第一个系列的 <code>areaStyle</code> 填充是<strong>从坐标轴 0 点开始</strong>的。所以必须有一个透明的 <code>base</code> 系列先把堆叠起点抬到 <code>mean − 2σ</code>，否则最低那段的颜色会一路铺到图表底部。系列顺序为：<code>base(透明) → −2σ~−1σ → ±1σ(双倍高度) → +1σ~+2σ</code>。修改这张图时务必核对 <code>series</code> 数量（σ 口径 9 个 / 分位口径 7 个）与 <code>stack: 'b'</code> 分组。</p></blockquote><h4 id="通道统计口径e-chan-下拉四种">通道统计口径（<code>e-chan</code> 下拉，四种）</h4><div class="table-wrap"><table><thead><tr><th>口径</th><th>均线/σ 来源</th><th>特点</th><th>能否实盘</th></tr></thead><tbody><tr><td>滚动均值 ±σ（默认）</td><td>跟随「标准化回看窗口」</td><td>通道自适应漂移，与回测口径一致</td><td>✅</td></tr><tr><td>全样本累计 ±σ</td><td>截至当月的扩张窗口</td><td>早期与滚动一致，后期趋平滑</td><td>✅</td></tr><tr><td>固定全样本 ±σ</td><td><strong>用完整历史一次性算出</strong>（mean=5.33 / sd=1.21）</td><td>轨道水平，与大顶大底重合度最高（2014 峰 z=+2.32，2015/2018/2021 谷 z=−2.48/−2.30/−2.06）</td><td>❌ 含未来数据，仅复盘对照；页面标注红色警告</td></tr><tr><td>滚动分位带 P10–P90</td><td>滚动分位数（窗口取 max(回看窗口, 60)）</td><td>对极值稳健，不依赖正态假设</td><td>✅</td></tr></tbody></table></div><blockquote><p>为什么别人的图&quot;均线 ±2σ 与高低点重合度很高&quot;？通常是固定全样本/超长窗口统计 + 周频数据（2005 年起约 1100 个点，含 2008/2011 超级极值把 σ 撑大）。视觉上贴合，但本质是把未来数据画进了轨道——本系统把它作为一个<strong>可切换的对照口径</strong>保留，并用红色警告标明不可用作信号。</p></blockquote><h4 id="口径对照诊断面板erp-图卡底部可折叠">口径对照诊断面板（ERP 图卡底部，可折叠）</h4><p>用于回答&quot;<strong>为什么我的图和别人不一样</strong>&quot;。同一时点、同一指数，换个统计口径当前位置就能差出 1 个 σ 以上，面板把差异摊开成三块：</p><ol class="lvl0"><li><strong>不同回看窗口对照表</strong>：7 种窗口 × (均值 / σ / 当前值 / Z-Score / 分位)，<strong>点击任意行即可把该窗口套用到全站</strong>（联动参数沙盘与回测）。关键规律：窗口越短，σ 越小，同样的读数 z 越极端——例如 2026-10 的 ERP 6.11，在近 1 年窗口下 z=+2.26，近 3 年只有 +0.43。</li><li><strong>数据延迟对照表</strong>：模拟&quot;对方的图截止在 1/2/3/6/9/12 个月前&quot;，列出当时的读数与当时口径下的 z。<strong>这是最常见的差异来源</strong>：2026 年 6~10 月沪深300 回调 17.8%，ERP 从 5.16 抬到 6.11——截止在 2026-04 的图 z 恰好 = 0.00（贴着均线），而更新到 10 月就是 +0.98。</li><li><strong>外部读数反推</strong>：把别人图上的当前值填进来，实时算出它在各窗口下的 z，并把差异换算成两个物理来源——&quot;对方 Y10 ≈ 多少&quot;或&quot;对方 PE ≈ 多少（±百分之几）&quot;，用于快速判断差异是收益率口径还是估值口径造成的。</li></ol><blockquote><p><strong>注意</strong>：<code>wind-finance</code> 已于 2026-10-26 逐位校验（4/30 PE 14.6355、6/30 14.5066、9/30 13.1796、10/23 12.8222，与本地序列全部一致），本站数据本身无系统性偏差。此外 z 对加减性偏差天然免疫（均值同移），所以&quot;别人用的 10Y 收益率比我们高 0.5pct&quot;这类<strong>平移</strong>根本解释不了 z 的差异；能解释的是<strong>截止时点</strong>和<strong>窗口长度</strong>。</p></blockquote><h3 id="64-净值图双视图">6.4 净值图双视图</h3><p><strong>为什么需要：</strong> 绝对净值从 1 涨到 3.5，四条曲线在图上挤成一条带，看不出相对表现。</p><div class="table-wrap"><table><thead><tr><th>视图</th><th>计算</th><th>纵轴跨度</th></tr></thead><tbody><tr><td><strong>相对沪深300</strong>（默认）</td><td><code>(策略净值 / 沪深300净值 − 1) × 100</code></td><td>约 −52% ~ +23%</td></tr><tr><td>净值（对数）</td><td>原始净值，log 轴</td><td>1 ~ 3.5（对数刻度）</td></tr></tbody></table></div><p>相对视图中，沪深300 自身成为 0% 基准虚线，曲线在 0 轴上方 = 跑赢，下方 = 跑输，一目了然。</p><p>两张图都带 <code>dataZoom</code>：底部拖动滑块缩放，<strong>滚轮需要按住 Shift</strong> 才缩放（避免滚动页面时误触）。切换视图时会保留当前缩放位置。</p><h3 id="65-参数控件">6.5 参数控件</h3><div class="table-wrap"><table><thead><tr><th>控件</th><th>ID</th><th>取值</th><th>默认值</th><th>作用</th></tr></thead><tbody><tr><td>信号口径</td><td><code>c-signal</code></td><td><code>erp</code> / <code>ratio</code> / <code>dyspread</code></td><td><code>erp</code></td><td>用哪个指标当信号</td></tr><tr><td>标准化回看窗口</td><td><code>c-window</code></td><td>0 / 36 / 60 / 120 月</td><td>120（近 10 年）</td><td>滚动统计的样本长度</td></tr><tr><td>仓位映射方式</td><td><code>c-map</code></td><td><code>pct</code> / <code>z</code></td><td><code>pct</code></td><td>分位线性 or Z 截断</td></tr><tr><td>股票仓位下限</td><td><code>c-min</code></td><td>0~60%</td><td>20%</td><td><code>minW</code></td></tr><tr><td>股票仓位上限</td><td><code>c-max</code></td><td>50~100%</td><td>90%</td><td><code>maxW</code></td></tr><tr><td>再平衡频率</td><td><code>c-rebal</code></td><td>1 / 3 / 6 月</td><td>1</td><td><code>rebalance</code></td></tr><tr><td>单次交易成本</td><td><code>c-cost</code></td><td>0~100 bp</td><td>5</td><td><code>costBp</code></td></tr><tr><td>回测起点</td><td><code>c-start</code></td><td>面板索引</td><td>0</td><td><code>startIdx</code></td></tr><tr><td>恢复默认</td><td><code>c-reset</code></td><td>—</td><td>—</td><td>回到 <code>DEFAULTS</code></td></tr></tbody></table></div><p>上下限之间有互斥保护：调整一侧逼近另一侧时会自动推开 5 个百分点，防止 <code>minW &gt; maxW</code>。</p><p><strong>所有控件改动都会触发 <code>render()</code> 全量重算</strong>，不需要点&quot;确定&quot;。</p><h3 id="66-手机端自适应">6.6 手机端自适应</h3><p>窗口 ≤720px 时进入手机布局，两处协同：</p><ul class="lvl0"><li><strong>CSS（<code>styles.css</code> 媒体查询）</strong>：KPI 固定两列、图表盒贴边、回测表与情景矩阵 <code>overflow-x: auto</code> 横向滑动、表单控件字号提到 16px（避免 iOS 聚焦时整页缩放）、 关闭 hover 效果（触屏上会&quot;粘住&quot;）；</li><li><strong>JS（<code>app.js</code>）</strong>：<code>NARROW</code> 标志位控制图表参数工厂 —— <code>AXIS()</code> / <code>LEGEND()</code> / <code>gd()</code> 在窄屏下分别输出更小的字号、更密的图例间距和压缩后的绘图区留白； tooltip 加 <code>confine: true</code> 防止浮出屏幕。窗口尺寸跨越 720px 断点时 （旋转屏幕 / 拖窗口）自动重渲染一次。</li></ul><p>桌面布局（&gt;720px）完全不受影响，回归验证过。</p><hr><h2 id="七数据更新机制">七、数据更新机制</h2><h3 id="71-各字段的自动更新能力">7.1 各字段的自动更新能力</h3><div class="table-wrap"><table><thead><tr><th>字段</th><th style="text-align:center">自动更新</th><th>来源</th><th>方法</th></tr></thead><tbody><tr><td>沪深300 收盘价</td><td style="text-align:center">✅ 每交易日</td><td>新浪 <code>hq.sinajs.cn</code> + 东财 <code>push2.eastmoney.com</code></td><td>双源交叉校验，偏差 &gt;1% 时以新浪为准</td></tr><tr><td>PE / PB / 股息率</td><td style="text-align:center">✅ 推算</td><td>无免费权威源</td><td>见 <a href="#72-pe-的滚动推算">7.2</a></td></tr><tr><td>10 年期国债 YTM</td><td style="text-align:center">❌ 手动</td><td>无免鉴权接口</td><td>见 <a href="#74-国债收益率的缺口">7.4</a></td></tr></tbody></table></div><h3 id="72-pe-的滚动推算">7.2 PE 的滚动推算</h3><p><strong>这是整个更新机制的核心，也是它&quot;不算作弊&quot;的原因。</strong></p><p>在同一份财报的有效期内，指数每股盈利 <code>E</code> 是常数，而 <code>PE = P / E</code>，所以：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">text</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>PE_today    = PE_anchor × (Close_today / Close_anchor)
+PB_today    = PB_anchor × (Close_today / Close_anchor)
+股息率_today = 股息率_anchor × (Close_anchor / Close_today)</code></pre></div><p>股息率反向是因为<strong>分红金额固定</strong>，价格上涨则收益率下降。</p><p><strong>这是数学恒等，不是拟合、不是估算。</strong> 关键点：</p><ol class="lvl0"><li><strong>永远从原始锚点起算</strong> —— 脚本每次都从 CSV 末行（锚点）直接推算到今天，不逐次叠加，因此不存在漂移累积。</li><li><strong>锚点价格取自同日期</strong> —— 优先用 <code>hs300_price_monthly.csv</code> 中与锚点同日的价格；找不到时退化为锚点所在月的最后收盘。</li><li><strong>月度 upsert</strong> —— <code>month_upsert()</code> 保证一个自然月永远只有一条记录（该月最新观测）。同月内多次运行只会覆盖，不会产生重复月度数据点。</li></ol><p>实测锚点①：2026-10-23 Wind 给出 PE=12.8222，推算至 2026-10-26 得 PE=12.846，与 Wind 口径完全自洽。</p><h3 id="73-财报期失真与-calibrationjson">7.3 财报期失真与 <code>calibration.json</code></h3><p><strong>唯一会失真的情况：跨过财报披露期。</strong> 沪深300 的成分股盈利 <code>E</code> 大致在 <strong>4 月底 / 8 月底 / 10 月底</strong> 附近更新，此时即使价格没变，PE 也会跳变，滚动推算立即失效。</p><p>为此设计了双日期机制：</p><div class="table-wrap"><table><thead><tr><th>日期</th><th>存放位置</th><th>语义</th><th>谁会更新它</th></tr></thead><tbody><tr><td><code>anchor_date</code></td><td>CSV 末行的日期</td><td>当前数据点</td><td>每次运行 <code>update.py</code> 都会刷新</td></tr><tr><td><code>calibrated_at</code></td><td><code>data/raw/calibration.json</code></td><td><strong>上次用 Wind 权威源写死 PE 的日期</strong></td><td><strong>只有加 <code>--calibrate</code> 才会刷新</strong></td></tr></tbody></table></div><blockquote><p><strong>为什么必须分开：</strong> 如果脚本自己每次更新都刷新&quot;校准日期&quot;，那么&quot;距今多少天&quot;永远归零，过期检查就永远命中不了，形同虚设。</p></blockquote><p><strong>阈值 <code>ANCHOR_MAX_AGE = 110</code> 天</strong>（约一个季报周期 + 缓冲）。超过时：</p><ul class="lvl0"><li>运行时打印红色警告；</li><li>页面顶部弹红色提示条（<code>meta.refresh.anchor_expired = 1</code>）。</li></ul><p><strong>到期的处理（任选其一）：</strong></p><ol class="lvl0"><li>在 WorkBuddy 里对我说 <strong>「校准股债数据」</strong> —— 我用 Wind MCP 重新取一次 PE/PB/股息率，覆盖 CSV 末行，再带 <code>--calibrate</code> 运行；</li><li>手工改写 <code>hs300_valuation_monthly.csv</code> 末行的 <code>pe,pb,div</code>，然后： <code></code>`bash python scripts/update.py --calibrate <code></code>`</li></ol><h3 id="74-国债收益率的缺口">7.4 国债收益率的缺口</h3><p><strong>这是整条链路上唯一的缺口。</strong> 实测结论：</p><div class="table-wrap"><table><thead><tr><th>候选源</th><th>结果</th></tr></thead><tbody><tr><td>中债估值 yield.chinabond.com.cn</td><td>需鉴权</td></tr><tr><td>中国货币网 chinamoney.com.cn</td><td>接口 404 / 返回非预期结构</td></tr><tr><td>东方财富国债收益率曲线</td><td>无开放的免鉴权接口</td></tr></tbody></table></div><p><code>scripts/update.py</code> 里预留了<strong>插件式</strong>的源注册表，找到可用源后加一个返回 <code>{date, y10}</code> 的函数并注册即可，其余代码完全不用动：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">python</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code><span class="tk-k">def</span> fetch_yield_xxx():
+    txt = http_get(<span class="tk-s">&quot;https://...&quot;</span>)
+    <span class="tk-k">if</span> <span class="tk-k">not</span> txt: <span class="tk-k">return</span> None
+    <span class="tk-c"># 解析出 date (YYYY-MM-DD) 和 y10 (float, 单位 %)</span>
+    <span class="tk-k">return</span> <span class="tk-b">dict</span>(<span class="tk-b">date</span>=..., y10=...)
+
+YIELD_SOURCES = [
+    (<span class="tk-s">&quot;中国货币网&quot;</span>, fetch_yield_chinamoney),
+    (<span class="tk-s">&quot;XXX&quot;</span>, fetch_yield_xxx),          <span class="tk-c"># ← 新源加这里，按顺序尝试</span>
+]</code></pre></div><p>在此之前：<strong>对我说一句「更新股债数据」</strong>，我用 westock MCP 的 <code>cn_yield_curve</code> 拉银行间国债收益率曲线补上。</p><h3 id="75-页面上的新鲜度反馈">7.5 页面上的新鲜度反馈</h3><p>右上角状态行格式为：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">text</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>最新数据点 2026-10-26 ｜ 最新 0 天 ｜ 实时 4095.08
+国债YTM 取自 2026-10-23（无免费实时源）</code></pre></div><div class="table-wrap"><table><thead><tr><th>天数</th><th>等级</th><th>颜色</th></tr></thead><tbody><tr><td>≤ 3 天</td><td>最新</td><td>绿</td></tr><tr><td>4~8 天</td><td>滞后</td><td>橙</td></tr><tr><td>&gt; 8 天</td><td>过期</td><td>红</td></tr></tbody></table></div><p>顶部提示条触发条件（点 × 可关闭）：</p><div class="table-wrap"><table><thead><tr><th>条件</th><th>提示内容</th><th>级别</th></tr></thead><tbody><tr><td>数据 &gt; 8 天未更新</td><td>提示双击 <code>start.bat</code></td><td>普通（橙）</td></tr><tr><td>PE 锚点 &gt; 110 天</td><td>提示可能跨财报期、需用 Wind 校准</td><td><strong>严重（红）</strong></td></tr><tr><td>上次运行未联网成功</td><td>提示当前显示的是历史快照</td><td>普通（橙）</td></tr></tbody></table></div><hr><h2 id="八使用指南">八、使用指南</h2><h3 id="81-页面从上往下怎么读">8.1 页面从上往下怎么读</h3><p><strong>① 核心读数（六张卡）</strong></p><p>先看中间那张高亮的 <strong>ERP</strong>：当前 6.14 pct，即&quot;持有股票的隐含回报比持有国债每年多 6.14 个百分点&quot;。再看最右的<strong>分位</strong>：85% 意味着当前 ERP 比近十年 85% 的月份都要高。</p><blockquote><p>建议的心理模型：<strong>ERP 是&quot;厚度&quot;，分位是&quot;贵贱&quot;。</strong> 厚度决定值不值得承担波动，分位决定现在是不是个好时机。</p></blockquote><p><strong>② 结论区</strong>：温度仪表 + 五档结论 + 建议仓位 + 历史类比。</p><p><strong>③ 双线图</strong>：蓝色 Y10 与红色 E/P 两条线之间的红<strong>色区域宽度</strong>就是 ERP。开口收窄甚至交叉（E/P 跌破 Y10）是历史上极少见的极端信号，通常对应股票极贵。</p><p><strong>④ ERP 通道图 + 右轴沪深300</strong>：叠加指数后能直观验证&quot;ERP 冲高 ≈ 指数挖坑&quot;的对应关系。注意盯红区（便宜）和绿区（贵）。</p><p><strong>⑤ 参数沙盘</strong>：调完立即生效。</p><p><strong>⑥ 回测</strong>：默认&quot;相对沪深300&quot;视图看超额表现，绩效表看年化/回撤/夏普。</p><p><strong>⑦ 情景矩阵</strong>：中心格（PE 不变、利率不变）被红框标出，是当前实际读数。横向看利率变动、纵向看估值变动的影响。</p><h3 id="82-典型操作">8.2 典型操作</h3><div class="table-wrap"><table><thead><tr><th>我想知道</th><th>怎么做</th></tr></thead><tbody><tr><td>现在该配多少股票</td><td>直接看结论区的仓位条（默认参数下当前为股票 80% / 债券 20%）</td></tr><tr><td>换个更保守的口径</td><td>信号口径选「股息式」，只看真金白银的分红 vs 国债</td></tr><tr><td>只用最近 5 年做基准</td><td>回看窗口选「近 5 年」</td></tr><tr><td>不想全仓进出</td><td>把仓位上下限收到 30%~70%</td></tr><tr><td>换手成本很贵怎么办</td><td>交易成本调到 20bp，观察回测年化掉多少</td></tr><tr><td>只想看 2015 年以后的表现</td><td>回测起点选 2015-01</td></tr><tr><td>假设明年降息 30bp</td><td>情景矩阵看 +0% PE / −30bp 那一列（实际是 −20/−40 之间插值）</td></tr><tr><td>确认数据是不是最新的</td><td>看右上角状态行的天数</td></tr></tbody></table></div><h3 id="83-三种信号口径怎么选">8.3 三种信号口径怎么选</h3><div class="table-wrap"><table><thead><tr><th>口径</th><th>公式</th><th>适合场景</th><th>特点</th></tr></thead><tbody><tr><td><strong>差值式 ERP</strong></td><td><code>E/P − Y10</code></td><td>默认、最通用</td><td>直观，单位是百分点，但利率极低时（如 Y10→1%）差值会失去敏感性</td></tr><tr><td><strong>比值式</strong></td><td><code>E/P ÷ Y10</code></td><td>低利率环境</td><td>利率趋近 0 时倍数会剧烈放大，对利率变化更敏感，但也更容易极端</td></tr><tr><td><strong>股息式</strong></td><td><code>股息率 − Y10</code></td><td>保守/熊市</td><td>只看确定性现金流，最&quot;实&quot;，但对成长股占比高的指数会低估吸引力</td></tr></tbody></table></div><hr><h2 id="九参数调优与敏感性">九、参数调优与敏感性</h2><h3 id="91-回测基准默认参数2012-01--2026-105bp-单次成本178-个月">9.1 回测基准（默认参数，2012-01 ~ 2026-10，5bp 单次成本，178 个月）</h3><div class="table-wrap"><table><thead><tr><th>策略</th><th style="text-align:right">年化收益</th><th style="text-align:right">年化波动</th><th style="text-align:right">夏普</th><th style="text-align:right">最大回撤</th><th style="text-align:right">Calmar</th><th style="text-align:right">月度胜率</th></tr></thead><tbody><tr><td><strong>ERP 动态轮动</strong></td><td style="text-align:right"><strong>7.87%</strong></td><td style="text-align:right">12.62%</td><td style="text-align:right"><strong>0.38</strong></td><td style="text-align:right"><strong>−15.8%</strong></td><td style="text-align:right">0.50</td><td style="text-align:right">58%</td></tr><tr><td>沪深300 全仓</td><td style="text-align:right">6.49%</td><td style="text-align:right">21.41%</td><td style="text-align:right">0.16</td><td style="text-align:right">−39.6%</td><td style="text-align:right">0.16</td><td style="text-align:right">56%</td></tr><tr><td>10 年期国债全仓</td><td style="text-align:right">4.06%</td><td style="text-align:right">3.53%</td><td style="text-align:right">0.30</td><td style="text-align:right">−6.8%</td><td style="text-align:right">0.59</td><td style="text-align:right">66%</td></tr><tr><td>60/40 再平衡</td><td style="text-align:right">6.12%</td><td style="text-align:right">12.67%</td><td style="text-align:right">0.24</td><td style="text-align:right">−22.3%</td><td style="text-align:right">0.27</td><td style="text-align:right">60%</td></tr></tbody></table></div><p><strong>核心结论：</strong> 轮动策略用接近纯债券一半的回撤（−15.8% vs −39.6%），拿到了接近纯股票的年化（7.87% vs 6.49%），夏普比是全仓股票的两倍以上。</p><blockquote><p>夏普分母的无风险利率取回测区间 Y10 均值。以上数值会随参数变化，请在页面上实时查看。</p></blockquote><h3 id="92-敏感性规律">9.2 敏感性规律</h3><p>经过实测，参数对结果的影响大致如下：</p><div class="table-wrap"><table><thead><tr><th>参数</th><th>调大的效果</th></tr></thead><tbody><tr><td><code>window</code>（回看窗口）</td><td>更稳定、更迟钝；短窗口（3 年）更敏感但容易产生假信号</td></tr><tr><td><code>minW</code> / <code>maxW</code> 区间收窄</td><td>年化和回撤同步下降，夏普通常先升后降</td></tr><tr><td><code>rebalance</code> 拉长</td><td>换手下降、成本下降，但信号响应变慢</td></tr><tr><td><code>costBp</code> 提高</td><td>年化线性下降；月度再平衡下 5bp→20bp 会明显侵蚀超额</td></tr><tr><td>信号口径切换</td><td>结论方向通常一致，但极端程度不同（比值式最激进，股息式最保守）</td></tr></tbody></table></div><h3 id="93-警惕过拟合">9.3 警惕过拟合</h3><p>页面上的参数可以组合出几百种回测结果。<strong>不要挑那个最好看的</strong>——那几乎一定是过拟合。判断标准应该是：</p><ul class="lvl0"><li>相邻参数下结果是否稳定（把 window 从 120 挪到 96、144，结论是否翻转？）</li><li>换一种信号口径，方向是否一致？</li><li>加了成本以后优势还剩多少？</li><li>分两段子样本（如 2012-2018 / 2019-2026）分别跑，是否都成立？</li></ul><hr><h2 id="十测试与验证">十、测试与验证</h2><h3 id="101-引擎冒烟测试">10.1 引擎冒烟测试</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">bash</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>node scripts/smoke_test.js</code></pre></div><p>覆盖以下检查：</p><div class="table-wrap"><table><thead><tr><th>检查项</th><th>期望</th></tr></thead><tbody><tr><td>面板行数与可用月份数</td><td>与 dataset meta 一致</td></tr><tr><td>缺失收益的月份</td><td>仅首月（无上月做分母）</td></tr><tr><td>沪深300 价格年化</td><td>与 Close 的首末值复核对得上</td></tr><tr><td>修正久期 @2% / @4%</td><td>约 9.0 / 8.1</td></tr><tr><td>当前读数一致性</td><td>PE → E/P → ERP 与 meta.latest 自洽</td></tr><tr><td>四组绩效无非有限值</td><td><code>NaN</code> 计数为 0</td></tr><tr><td>情景矩阵方向性</td><td>PE 上升 → ERP 下降 → 仓位下降；利率上升同理</td></tr></tbody></table></div><h3 id="102-浏览器端验证">10.2 浏览器端验证</h3><p>因为没法直接&quot;看&quot;截图，项目里采用 <strong>DOM 探针</strong>的方式做验证：把 <code>index.html</code> 复制一份，末尾追加一段同步执行的脚本，读出 ECharts 实例的 <code>getOption()</code>，写进 DOM 的 <code>data-probe</code> 属性，再用无头 Edge 的 <code>--dump-dom</code> 抓回来。</p><div class="code-wrap"><div class="code-head"><span class="code-lang">bash</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>cp index.html _pf.html
+cat &gt;&gt; _pf.html &lt;&lt; <span class="tk-s">'EOF'</span>
+&lt;script&gt;
+(<span class="tk-k">function</span> () {
+  var inst = echarts.getInstanceByDom(document.getElementById(<span class="tk-s">'chart-erp'</span>));
+  var o = inst.getOption();
+  var d = document.createElement(<span class="tk-s">'div'</span>);
+  d.setAttribute(<span class="tk-s">'data-probe'</span>, <span class="tk-s">'series='</span> + o.series.length + <span class="tk-s">' yAxis='</span> + o.yAxis.length);
+  document.body.appendChild(d);
+})();
+&lt;/script&gt;
+EOF
+msedge --headless=new --disable-gpu --virtual-time-budget=<span class="tk-n">9000</span> --dump-dom <span class="tk-s">&quot;http://127.0.0.1:8777/_pf.html&quot;</span></code></pre></div><blockquote><p>⚠️ 探针必须<strong>同步执行</strong>。用 <code>setTimeout</code> 时，在 <code>virtual-time-budget</code> 模式下 <code>--dump-dom</code> 不会等待回调，会抓不到。</p></blockquote><p>已验证过的项目：双轴生效、堆叠通道 series 数量与分组正确、四张图 tooltip 无报错、视图切换与三种信号口径切换均正常、<code>file://</code> 直接打开可完整渲染。</p><h3 id="103-更新脚本的可重复运行性">10.3 更新脚本的可重复运行性</h3><p><code>update.py</code> 设计为幂等：同一天多次运行结果相同（<code>month_upsert</code> 覆盖而非追加），且在任何一步失败时不会破坏已有 CSV。建议初次使用时先备份三份 CSV。</p><hr><h2 id="十一扩展开发指南">十一、扩展开发指南</h2><h3 id="111-换一个指数如换成中证500--上证50">11.1 换一个指数（如换成中证500 / 上证50）</h3><ol class="lvl0"><li>按 <a href="#41-三份原始-csv">4.1</a> 的格式准备三份 CSV（估值 + 价格 + 国债收益率），放到 <code>data/raw/</code>；</li><li>改 <code>build_dataset.py</code> 顶部的常量：文件名 + <code>meta.index</code> / <code>meta.valuation_source</code> 描述；</li><li>若要同时支持多个指数，建议给 CSV 加后缀（<code>hs300_*</code> / <code>zz500_*</code>），在 build 时生成多个 dataset，前端加一个指数切换下拉框。</li></ol><blockquote><p>注意：不同指数的盈利口径、成分调整频率不同，<code>ANCHOR_MAX_AGE</code> 可能要相应调整。</p></blockquote><h3 id="112-新增一个信号">11.2 新增一个信号</h3><ol class="lvl0"><li>在 <code>buildSeries</code> 的 <code>rec</code> 里加派生字段（如 <code>eySpread = ep - y30</code>）；</li><li>在 <code>index.html</code> 的 <code>c-signal</code> 下拉框加 <code>&lt;option&gt;</code>；</li><li>在 <code>app.js</code> 里的三处查表加上对应条目：</li></ol><ul><ul class="nest"><li><code>unit = { erp:'pct', ... }[cfg.signal]</code></li><li><code>name = { erp:'股权风险溢价 ERP', ... }[cfg.signal]</code></li><li><code>signalName</code>（<code>renderVerdict</code> 内）</li><li><code>labels</code>（<code>renderKPI</code> 内）</li></ul><li>在 <code>renderMatrix</code> 的 <code>unit</code> 查表补一行；</li><li>跑 <code>smoke_test.js</code> 确认 NaN 计数为 0。</li></ul><h3 id="113-新增国债收益率数据源">11.3 新增国债收益率数据源</h3><p>见 <a href="#74-国债收益率的缺口">7.4</a>，在 <code>YIELD_SOURCES</code> 注册即可。</p><h3 id="114-想把回测频率换成日频">11.4 想把回测频率换成日频</h3><p>当前是月频，因为估值数据只有月末。<strong>若要改成日频</strong>，需要：</p><ul class="lvl0"><li>日频的 PE 序列（目前只有 Wind 有，且需权限）；</li><li><code>buildSeries</code> 里的年期化常数（<code>12</code>）要换成 <code>252</code> 或按实际交易日算；</li><li><code>window</code> 参数的含义会从&quot;月&quot;变成&quot;日&quot;。</li></ul><p>改动面较大，不建议在月频估值数据的基础上做日频——会引入插值噪声却没有新信息。</p><h3 id="115-接入定时自动更新">11.5 接入定时自动更新</h3><p>系统本身不含调度。可以用 Windows 任务计划程序，每天收盘后（如 16:00）执行：</p><div class="code-wrap"><div class="code-head"><span class="code-lang">text</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>cmd /c cd /d &quot;G:\Projects\workbuddy projects\EquiBond&quot; &amp;&amp; python scripts\update.py</code></pre></div><p>或者在 WorkBuddy 里建一个定时任务（automation），由我用 Wind / westock MCP 补齐缺失的国债收益率和 PE 校准——这样连手动成本都没有。</p><hr><h2 id="十二已知局限与风险提示">十二、已知局限与风险提示</h2><h3 id="121-方法论局限">12.1 方法论局限</h3><div class="table-wrap"><table><thead><tr><th>局限</th><th>说明</th></tr></thead><tbody><tr><td><strong>TTM 盈利的周期性</strong></td><td>用 TTM 盈利算 E/P，低 PE 可能是因为盈利正处于周期高位（&quot;低 PE 陷阱&quot;）。周期股占比重的指数尤其要注意。</td></tr><tr><td><strong>样本偏短</strong></td><td>2012 年以来约 15 年，只覆盖了 ~3 个完整牛熊。滚动 10 年窗口下，实际样本量只有 120 个月。</td></tr><tr><td><strong>估值中枢漂移</strong></td><td>A 股整体 PE 中枢在下移，滚动窗口能部分缓解但不能根除。</td></tr><tr><td><strong>债券端是合成指数</strong></td><td>用久期近似合成，未考虑信用利差、骑乘收益、回购融资成本，与真实国债总回报指数会有小幅偏离。</td></tr><tr><td><strong>股息再投是近似的</strong></td><td>补的是&quot;上月股息率/12&quot;，不是真实除息日再投资。</td></tr><tr><td><strong>未考虑税费与冲击成本</strong></td><td>交易成本只按 bp 线性计提，未含冲击成本和赎回费。</td></tr><tr><td><strong>历史类比有条件期望偏差</strong></td><td>只统计&quot;信号 ≥ 当前&quot;的时点，天然偏乐观。</td></tr></tbody></table></div><h3 id="122-这个模型不做什么">12.2 这个模型不做什么</h3><ul class="lvl0"><li><strong>不预测短期涨跌</strong> —— 它回答的是&quot;未来几年维度上，股债谁更值得配&quot;，不是&quot;下个月会不会涨&quot;。ERP 可以在高位维持很久（这是该模型最大的实盘难点）。</li><li><strong>不做个股选择</strong> —— 只是大类资产之间的相对配置。</li><li><strong>不做择时的全部</strong> —— 没有考虑宏观流动性、政策、盈利周期位置等 ERP 之外的因素。</li></ul><h3 id="123-免责声明">12.3 免责声明</h3><p>本项目所有指标、信号与回测结果均由公开数据按文中公式机械计算生成，<strong>仅用于量化研究与方法演示，不构成任何投资建议，也不保证未来表现。历史回测不等于实盘。</strong> 请自行独立判断并承担风险。</p><hr><h2 id="十三故障排查-faq">十三、故障排查 FAQ</h2><div class="table-wrap"><table><thead><tr><th>现象</th><th>原因</th><th>处理</th></tr></thead><tbody><tr><td>页面空白 / 图表不显示</td><td>脚本加载失败</td><td>确认 <code>vendor/echarts.min.js</code>、<code>data/dataset.js</code>、<code>engine.js</code>、<code>app.js</code> 四个文件都在；用浏览器控制台看报错</td></tr><tr><td><code>file://</code> 打开不显示数据</td><td>极少数浏览器的本地文件策略</td><td>改用 <code>python -m http.server 8777</code> 访问</td></tr><tr><td><code>start.bat</code> 提示 Python not found</td><td>PATH 里没有 Python</td><td>安装 Python 3，或手动指定路径运行 <code>update.py</code></td></tr><tr><td>运行结果提示&quot;两源偏差过大&quot;</td><td>新浪与东财的快照时点不同（一个是实时，一个是收盘）</td><td>正常现象，脚本已自动以新浪为准。若长期异常检查网络代理。</td></tr><tr><td>PE 数值看着不对</td><td>跨过财报期导致推算失真</td><td>执行 <a href="#73-财报期失真与-calibrationjson">7.3</a> 的校准流程</td></tr><tr><td>页面顶部弹红色提示条</td><td>锚点超过 110 天</td><td>同上</td></tr><tr><td>国债日期一直停在旧日期</td><td>无免费实时源</td><td>让我执行「更新股债数据」，或按 <a href="#74-国债收益率的缺口">7.4</a> 自己加源</td></tr><tr><td>改了参数回测没变</td><td>可能是联动保护把另一个滑块也推走了</td><td>看一眼两个滑块的数值是否符合预期</td></tr><tr><td>通道图颜色糊成一片</td><td>堆叠的透明 <code>base</code> 层被误删</td><td>核对 <code>chart-erp</code> 的 <code>series</code> 数量为 9，<code>base</code> 系列存在</td></tr><tr><td><code>build_dataset.py</code> 报&quot;没有可用的对齐月份&quot;</td><td>三份 CSV 没有重叠月份</td><td>检查 CSV 的日期范围是否有交集</td></tr></tbody></table></div><hr><h2 id="附录-a字段字典">附录 A：字段字典</h2><h3 id="datasetjs-每行月度"><code>dataset.js</code> 每行（月度）</h3><div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>m</code></td><td>string</td><td>月份 <code>YYYY-MM</code>（面板主键）</td></tr><tr><td><code>d</code></td><td>string</td><td>实际观测日 <code>YYYY-MM-DD</code></td></tr><tr><td><code>pe</code> / <code>pb</code> / <code>div</code></td><td>number / null</td><td>沪深300 估值，月末最后交易日</td></tr><tr><td><code>close</code></td><td>number / null</td><td>沪深300 月线收盘</td></tr><tr><td><code>y10</code> / <code>y1</code> / <code>y30</code></td><td>number / null</td><td>国债到期收益率 %，月末观测</td></tr><tr><td><code>ok</code></td><td>0 / 1</td><td>四项关键字段是否齐全</td></tr></tbody></table></div><h3 id="seriesbuildseries-输出"><code>series</code>（<code>buildSeries</code> 输出）</h3><div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>ep</code></td><td>盈利收益率 = 100/pe</td></tr><tr><td><code>erp</code></td><td><code>ep − y10</code></td></tr><tr><td><code>ratio</code></td><td><code>ep / y10</code></td></tr><tr><td><code>dyspread</code></td><td><code>div − y10</code></td></tr><tr><td><code>retEqPrice</code></td><td>价格收益（不含股息）</td></tr><tr><td><code>retEq</code></td><td>股票总收益（含股息近似）</td></tr><tr><td><code>retBd</code></td><td>债券总收益（久期近似）</td></tr></tbody></table></div><h3 id="配置对象-cfg">配置对象 <code>cfg</code></h3><div class="code-wrap"><div class="code-head"><span class="code-lang">js</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>{
+  signal: <span class="tk-s">'erp'</span>,        <span class="tk-c">// 'erp' | 'ratio' | 'dyspread'</span>
+  <span class="tk-b">window</span>: <span class="tk-n">120</span>,          <span class="tk-c">// 0=全样本，否则回看月数</span>
+  map: <span class="tk-s">'pct'</span>,           <span class="tk-c">// 'pct' | 'z'</span>
+  minW: <span class="tk-n">0.20</span>, maxW: <span class="tk-n">0.90</span>,
+  zRange: <span class="tk-n">2</span>,            <span class="tk-c">// Z 映射的截断范围</span>
+  startIdx: <span class="tk-n">0</span>,          <span class="tk-c">// 回测起点索引</span>
+  rebalance: <span class="tk-n">1</span>,         <span class="tk-c">// 再平衡间隔（月）</span>
+  costBp: <span class="tk-n">5</span>,            <span class="tk-c">// 单边交易成本（基点）</span>
+}</code></pre></div><h3 id="主题配色appjs-的-c-对象">主题配色（<code>app.js</code> 的 <code>C</code> 对象）</h3><div class="table-wrap"><table><thead><tr><th>名称</th><th>色值</th><th>用途</th></tr></thead><tbody><tr><td><code>stock</code></td><td><code>#d1362d</code></td><td>股票、ERP、上涨（A 股涨红）</td></tr><tr><td><code>bond</code></td><td><code>#2f6fed</code></td><td>债券、Y10</td></tr><tr><td><code>grey</code></td><td><code>#98a1af</code></td><td>滚动均值</td></tr><tr><td><code>amber</code></td><td><code>#e8a33d</code></td><td>股息率差</td></tr><tr><td><code>purple</code></td><td><code>#7b52c9</code></td><td>60/40 对照</td></tr><tr><td>沪深300</td><td><code>#b07d1a</code></td><td>ERP 图右轴叠加线</td></tr><tr><td><code>txt</code> / <code>txt2</code> / <code>txt3</code></td><td><code>#1b1f27</code> / <code>#5a6472</code> / <code>#8e97a6</code></td><td>三级文字</td></tr></tbody></table></div><hr><h2 id="附录-b命令与文件速查">附录 B：命令与文件速查</h2><h3 id="命令">命令</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">bash</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code><span class="tk-c"># 更新数据（最常用）</span>
+<span class="tk-k">python</span> scripts/update.py
+
+<span class="tk-c"># 试算不落盘</span>
+<span class="tk-k">python</span> scripts/update.py --dry-run
+
+<span class="tk-c"># 引擎回归测试</span>
+node scripts/smoke_test.js
+
+<span class="tk-c"># 起本地服务（电脑自己看）</span>
+<span class="tk-k">python</span> -m http.server <span class="tk-n">8777</span>
+
+<span class="tk-c"># 起手机访问服务（打印地址 + 二维码，禁缓存）</span>
+<span class="tk-k">python</span> scripts/serve.py
+<span class="tk-k">python</span> scripts/serve.py --port <span class="tk-n">8000</span> --no-open   <span class="tk-c"># 换端口 / 不自动开浏览器</span></code></pre></div><h3 id="关键文件对照表">关键文件对照表</h3><div class="table-wrap"><table><thead><tr><th>我想改什么</th><th>改哪个文件</th></tr></thead><tbody><tr><td>页面结构 / 文案</td><td><code>index.html</code></td></tr><tr><td>图表配置 / 控件逻辑 / 状态提示</td><td><code>app.js</code></td></tr><tr><td>数学公式 / 回测规则 / 信号定义</td><td><code>engine.js</code></td></tr><tr><td>配色 / 卡片样式</td><td><code>styles.css</code>（+ <code>app.js</code> 的 <code>C</code> 常量）</td></tr><tr><td>数据来源 / 对齐规则 / meta 字段</td><td><code>scripts/build_dataset.py</code></td></tr><tr><td>取数逻辑 / 推算公式 / 警告阈值</td><td><code>scripts/update.py</code></td></tr><tr><td>原始数据</td><td><code>data/raw/*.csv</code></td></tr><tr><td>校准日期</td><td><code>data/raw/calibration.json</code></td></tr></tbody></table></div><h3 id="更新数据的最小流程">更新数据的最小流程</h3><div class="code-wrap"><div class="code-head"><span class="code-lang">text</span><button class="code-copy" type="button">复制</button></div><pre class="code"><code>每个月（或每次想刷新）：
+    双击 start.bat
+    ↓
+    新浪/东财拉最新收盘 → 按锚点推算 PE/PB/股息 → 写回 CSV
+    ↓
+    调 build_dataset.py 重建 panel
+    ↓
+    写 meta.refresh（含新鲜度、锚点年龄）
+    ↓
+    自动打开 index.html
+
+每跨过一个财报期（4/8/10 月底）：
+    对我说「校准股债数据」（或手工改 CSV 末行）
+    ↓
+    python scripts/update.py --calibrate</code></pre></div><hr><p><em>本文件随代码同步维护。若文档与实际行为不一致，以代码为准。</em></p></article></div>
+<button id="top-btn" title="回到顶部">&#8593;</button>
+<script>
+(function(){
+  var links=[].slice.call(document.querySelectorAll('#toc a'));
+  var secs=links.map(function(a){return document.getElementById(a.getAttribute('href').slice(1));});
+  var search=document.getElementById('tocsearch');
+  var main=document.getElementById('main');
+
+  // 1. 目录筛选
+  search.addEventListener('input',function(){
+    var q=this.value.trim().toLowerCase();
+    var hit=0;
+    links.forEach(function(a){
+      var ok=!q||a.textContent.toLowerCase().indexOf(q)>=0;
+      a.classList.toggle('hide',!ok);
+      if(ok)hit++;
+    });
+    document.getElementById('toc-empty').style.display=hit?'none':'block';
+  });
+
+  // 2. 滚动高亮当前章节
+  var cur=-1;
+  function onScroll(){
+    var y=window.scrollY+90,idx=-1;
+    for(var i=0;i<secs.length;i++){ if(secs[i]&&secs[i].offsetTop<=y) idx=i; }
+    if(idx!==cur){
+      if(cur>=0&&links[cur])links[cur].classList.remove('on');
+      cur=idx;
+      if(cur>=0&&links[cur]){
+        links[cur].classList.add('on');
+        var box=document.getElementById('toc'),r=links[cur].offsetTop;
+        if(r<box.scrollTop||r>box.scrollTop+box.clientHeight-60) box.scrollTop=r-120;
+      }
+    }
+    var h=document.documentElement;
+    document.getElementById('progress').style.width=
+      (h.scrollTop/(h.scrollHeight-h.clientHeight)*100)+'%';
+    document.getElementById('top-btn').classList.toggle('show',h.scrollTop>500);
+  }
+  var tick=false;
+  window.addEventListener('scroll',function(){
+    if(tick)return;tick=true;
+    requestAnimationFrame(function(){onScroll();tick=false;});
+  });
+  onScroll();
+
+  // 3. 代码块复制（execCommand 优先：file:// 下 clipboard API 可能不可用或悬挂）
+  document.querySelectorAll('.code-copy').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var txt=btn.parentNode.nextElementSibling.querySelector('code').innerText;
+      var done=function(){
+        btn.textContent='已复制';btn.classList.add('done');
+        setTimeout(function(){btn.textContent='复制';btn.classList.remove('done');},1600);
+      };
+      var fail=function(){ btn.textContent='复制失败'; setTimeout(function(){btn.textContent='复制';},1600); };
+      var okc=false;
+      try{
+        var ta=document.createElement('textarea');
+        ta.value=txt;ta.style.cssText='position:fixed;top:-999px;opacity:0';
+        document.body.appendChild(ta);ta.focus();ta.select();
+        okc=document.execCommand('copy');
+        document.body.removeChild(ta);
+      }catch(e){}
+      if(okc){done();return;}
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(done,fail);
+      }else fail();
+    });
+  });
+
+  // 4. 移动端抽屉
+  var side=document.getElementById('side');
+  document.getElementById('menu-btn').addEventListener('click',function(){
+    side.classList.toggle('open');
+  });
+  main.addEventListener('click',function(){ side.classList.remove('open'); });
+
+  // 5. 标题锚点
+  document.querySelectorAll('#doc h2,#doc h3,#doc h4').forEach(function(h){
+    if(!h.id)return;
+    var a=document.createElement('a');
+    a.className='anchor';a.href='#'+h.id;a.textContent='#';
+    h.appendChild(a);
+  });
+})();
+</script>
+</body>
+</html>
