@@ -54,11 +54,78 @@ def month_key(d):
     return d[:7]
 
 
+def build_daily(daily_map, val_rows, yld_rows):
+    """日频面板：用「最近一个权威 PE 日」做锚点，按收盘价比例推算每个交易日的 PE。
+
+    为什么这样算：PE = 总市值 / 总盈利。月内盈利不变，PE 与价格严格成正比；
+    跨月（尤其 4/8/10 财报季）盈利会跳变，所以每到新的权威日就重新锚定一次，
+    这样盈利更新被自动吸收，不会像"整月用一个固定 PE"那样系统性偏错。
+
+    返回 [["YYYY-MM-DD", pe, y10, close], ...]，升序。
+    """
+    y10 = {}
+    for r in yld_rows:
+        v = fval(r.get("y10"))
+        if v is not None:
+            y10[r["date"].strip()] = v
+
+    anchors = sorted((r["date"].strip(), fval(r["pe"]))
+                     for r in val_rows if fval(r["pe"]))
+    if not anchors or not daily_map:
+        return []
+
+    dates = sorted(daily_map)
+    # 锚点日的收盘价（锚点若不是交易日，取它之前最近一个交易日）
+    a_close = {}
+    for a, _ in anchors:
+        c = daily_map.get(a)
+        if c is None:
+            cand = [d for d in dates if d <= a]
+            c = daily_map[cand[-1]] if cand else None
+        a_close[a] = c
+
+    out = []
+    ai, cur, last_y = 0, None, None
+    for d in dates:
+        while ai < len(anchors) and anchors[ai][0] <= d:
+            cur = anchors[ai]
+            ai += 1
+        if cur is None:
+            continue
+        c0 = a_close.get(cur[0])
+        if not c0:
+            continue
+        pe = cur[1] * daily_map[d] / c0
+        v = y10.get(d)
+        if v is None:
+            v = last_y          # 当日收益率尚未发布（17:30 后才有）时沿用前一交易日
+        else:
+            last_y = v
+        if v is None:
+            continue
+        out.append([d, round(pe, 2), round(v, 4), round(daily_map[d], 2)])
+    return out
+
+
 def main():
     print("[1/3] 读取原始数据")
     val_rows = read_csv("hs300_valuation_monthly.csv")
     px_rows = read_csv("hs300_price_monthly.csv")
     yld_rows = read_csv("cgb_yield_daily.csv")
+
+    # 日频收盘价（可选：缺失时退化为纯月度面板）
+    daily_map = {}
+    dpath = os.path.join(RAW, "hs300_price_daily.csv")
+    if os.path.exists(dpath):
+        with open(dpath, "r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                d = (r.get("date") or "").strip()
+                c = fval(r.get("close"))
+                if d and c and d >= "2012-01-01":
+                    daily_map[d] = c
+        print("  载入 %-32s %4d 行" % ("hs300_price_daily.csv", len(daily_map)))
+    else:
+        print("  · 无 hs300_price_daily.csv，仅输出月度面板")
 
     # ---- 指数估值: 月末 → 最新一条 ----
     val_by_month = {}
@@ -126,6 +193,8 @@ def main():
     if not usable:
         sys.exit("[x] 没有可用的对齐月份，检查原始数据")
 
+    daily = build_daily(daily_map, val_rows, yld_rows)
+
     meta = dict(
         generated=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         index="沪深300 (000300.SH)",
@@ -135,6 +204,9 @@ def main():
         months_total=len(rows),
         months_usable=len(usable),
         range=[usable[0]["m"], usable[-1]["m"]],
+        daily_count=len(daily),
+        daily_range=[daily[0][0], daily[-1][0]] if daily else None,
+        daily_source="新浪财经日线 × Wind 月末 PE 锚点推算",
         latest=dict(
             date=usable[-1]["d"],
             pe=usable[-1]["pe"],
@@ -146,9 +218,11 @@ def main():
     )
 
     print("[2/3] 对齐完成  可用月份 %d  区间 %s ~ %s" % (len(usable), meta["range"][0], meta["range"][1]))
+    if daily:
+        print("      日频面板 %d 个交易日  %s ~ %s" % (len(daily), daily[0][0], daily[-1][0]))
 
     payload = "window.EQBD = " + json.dumps(
-        dict(meta=meta, rows=rows), ensure_ascii=False, separators=(",", ":")
+        dict(meta=meta, rows=rows, daily=daily), ensure_ascii=False, separators=(",", ":")
     ) + ";\n"
 
     with open(OUT, "w", encoding="utf-8") as f:

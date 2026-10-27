@@ -45,6 +45,7 @@ HDR = {
 VAL_CSV = "hs300_valuation_monthly.csv"
 PX_CSV = "hs300_price_monthly.csv"
 YLD_CSV = "cgb_yield_daily.csv"
+DAILY_CSV = "hs300_price_daily.csv"   # 日频收盘价，供日频图表与平滑信号
 
 ANCHOR_MAX_AGE = 110   # 天。超过说明很可能已跨过一个财报期，需要重新校准
                        # （页面端的「数据滞后」提示阈值见 app.js renderFreshness）
@@ -138,6 +139,34 @@ def fetch_hs300_price():
             print("      ! 两源偏差过大，采用新浪")
         return a
     return a or b
+
+
+def fetch_hs300_daily():
+    """新浪日线（最近 4000 根，约覆盖 15 年），返回 {YYYY-MM-DD: close}。
+    与实时接口同源、口径一致，供前端日频图表使用。
+    注意：东财 push2his 的 kline 接口在频繁请求后会直接断连，别用它做兜底。"""
+    url = ("https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+           "CN_MarketData.getKLineData?symbol=sh000300&scale=240&ma=no&datalen=4000")
+    txt = http_get(url, headers={"Referer": "https://finance.sina.com.cn/"})
+    if not txt or not txt.strip().startswith("["):
+        return None
+    try:
+        arr = json.loads(txt)
+    except Exception:
+        return None
+    out = {}
+    for it in arr:
+        d = str(it.get("day", ""))[:10]
+        c = it.get("close")
+        if not d or c is None:
+            continue
+        try:
+            v = float(c)
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            out[d] = v
+    return out or None
 
 
 # ---- 国债收益率候选源 ----
@@ -279,6 +308,7 @@ def main():
         print("\n[离线] 跳过联网取数")
         live = None
         y10 = None
+        daily = None
     else:
         # ---------- 2. 拉最新价 ----------
         print("\n[联网] 拉取沪深300 最新行情 ...")
@@ -287,6 +317,15 @@ def main():
             print("      -> %s  收盘 %.2f  (%s)" % (live["date"], live["close"], live["source"]))
         else:
             print("      -> 未能获取最新行情（网络不通或被限流），保留历史数据")
+
+        # ---------- 2b. 拉日线（日频图表与平滑信号，失败不阻塞主流程） ----------
+        print("[联网] 拉取沪深300 日线 ...")
+        daily = fetch_hs300_daily()
+        if daily:
+            last_d = max(daily)
+            print("      -> %d 条  最新 %s  收盘 %.2f" % (len(daily), last_d, daily[last_d]))
+        else:
+            print("      -> 未取到日线，沿用本地 %s" % DAILY_CSV)
 
         # ---------- 3. 拉国债收益率 ----------
         print("[联网] 拉取 10 年期国债收益率 ...")
@@ -352,6 +391,13 @@ def main():
     if new_px_row:
         month_upsert(px, new_px_row)
         write_rows(PX_CSV, px)
+    if daily:
+        drows = [["date", "close"]]
+        for d0 in sorted(daily):
+            drows.append([d0, "%.3f" % daily[d0]])
+        write_rows(DAILY_CSV, drows)
+        print("[日线] 写入 %s  %d 条（%s ~ %s）"
+              % (DAILY_CSV, len(daily), min(daily), max(daily)))
 
     # ---------- 5. 重建 dataset ----------
     print("\n[重建] 调用 build_dataset.py ...")

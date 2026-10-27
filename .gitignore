@@ -13,3 +13,7 @@ _*.tmp
 Thumbs.db
 desktop.ini
 .wbapp_*.genie
+
+# 日频预览（未定稿前不入库）
+_daily_preview.html
+_pv*.png

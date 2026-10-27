@@ -55,7 +55,7 @@
    * @param {Array} rows 原始行（含 ok 标记）
    * @returns {Array} 仅含可用月份的对象数组，升序
    */
-  function buildSeries(rows) {
+  function buildSeries(rows, smoothMap) {
     const out = [];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -77,10 +77,22 @@
         erp: ep - r.y10,
         ratio: ep / r.y10,
         dyspread: r.div - r.y10,
+        erpS: null,
+        ratioS: null,
         retEq: null,
         retEqPrice: null,
         retBd: null,
       };
+
+      // --- 日频平滑信号回灌（20 日均线在月末的取值）---
+      if (smoothMap) {
+        const sm = smoothMap[r.m];
+        if (sm) {
+          rec.erpS = sm.erpS;
+          rec.ratioS = sm.ratioS;
+          rec.smoothDate = sm.d;
+        }
+      }
 
       // --- 股票端月度收益: 价格收益 + 股息再投近似 ---
       if (prev && prev.close != null) {
@@ -105,6 +117,117 @@
       out.push(rec);
     }
     return out;
+  }
+
+  // ---------------- 日频面板 ----------------
+  /**
+   * dataset.daily（紧凑数组 [[d,pe,y10,close],...]）→ 对象数组
+   * @param {Array} daily
+   * @returns {Array} 升序，含 ep / erp / ratio
+   */
+  function buildDaily(daily) {
+    const out = [];
+    if (!daily || !daily.length) return out;
+    for (let i = 0; i < daily.length; i++) {
+      const r = daily[i];
+      const pe = r[1], y10 = r[2];
+      if (!(pe > 0) || y10 == null) continue;
+      const ep = 100 / pe;
+      out.push({
+        d: r[0],
+        m: String(r[0]).slice(0, 7),
+        pe: pe,
+        y10: y10,
+        close: r[3],
+        ep: ep,
+        erp: ep - y10,
+        ratio: ep / y10,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * 原地计算简单移动平均，结果写到 series[i][outKey]
+   * 用于给日频 ERP 去噪（20 日 ≈ 一个月，刚好把月度信号"摊平"成日频形态）
+   */
+  function moveAvg(series, key, n, outKey) {
+    const k = outKey || (key + 'Ma' + n);
+    const buf = [];
+    let sum = 0, cnt = 0;
+    for (let i = 0; i < series.length; i++) {
+      const v = series[i][key];
+      buf.push(v);
+      if (v != null && isFinite(v)) { sum += v; cnt++; }
+      if (buf.length > n) {
+        const o = buf.shift();
+        if (o != null && isFinite(o)) { sum -= o; cnt--; }
+      }
+      series[i][k] = cnt >= n ? sum / cnt : null;
+    }
+    return series;
+  }
+
+  /**
+   * 取每月最后一个交易日的（原始值 + 平滑值），回灌到月度面板做信号
+   * @returns {Object} { 'YYYY-MM': { d, erp, erpS, ratio, ratioS } }
+   */
+  function monthlySmooth(dailySeries) {
+    const byM = {};
+    for (let i = 0; i < dailySeries.length; i++) {
+      byM[dailySeries[i].m] = dailySeries[i];
+    }
+    const out = {};
+    Object.keys(byM).forEach(function (m) {
+      const r = byM[m];
+      out[m] = {
+        d: r.d,
+        erp: r.erp,
+        erpS: r.erpMa20 != null ? r.erpMa20 : r.erp,   // 序列开头不足 20 日时回退原值
+        ratio: r.ratio,
+        ratioS: r.ratioMa20 != null ? r.ratioMa20 : r.ratio,
+      };
+    });
+    return out;
+  }
+
+  /**
+   * 日频滚动通道（均值 / 标准差），滑动窗口 O(n)
+   * @param {number} window 交易日数（0 = 扩张窗口）
+   */
+  function rollingChannel(series, key, window) {
+    const n = series.length;
+    const mu = new Array(n), sd = new Array(n);
+    const q = [];
+    let sum = 0, sum2 = 0, cnt = 0;
+    const W = window > 0 ? window : n;
+    for (let i = 0; i < n; i++) {
+      const v = series[i][key];
+      q.push(v);
+      if (v != null && isFinite(v)) { sum += v; sum2 += v * v; cnt++; }
+      if (q.length > W) {
+        const o = q.shift();
+        if (o != null && isFinite(o)) { sum -= o; sum2 -= o * o; cnt--; }
+      }
+      if (cnt >= Math.min(W, 20)) {
+        const m = sum / cnt;
+        const varr = Math.max(0, sum2 / cnt - m * m) * cnt / Math.max(1, cnt - 1);
+        mu[i] = m;
+        sd[i] = Math.sqrt(varr);
+      } else {
+        mu[i] = null;
+        sd[i] = null;
+      }
+    }
+    return { mean: mu, sd: sd };
+  }
+
+  /** 平滑口径下实际使用的信号字段名（dyspread 无日频股息率，保持原始） */
+  function signalKey(cfg) {
+    if (!cfg || !cfg.smooth) return cfg.signal;
+    if (cfg.signal === 'erp') return 'erpS';
+    if (cfg.signal === 'ratio') return 'ratioS';
+    return cfg.signal;
   }
 
   // ---------------- 滚动统计 ----------------
@@ -209,6 +332,7 @@
    */
   function backtest(series, cfg) {
     const startIdx = cfg.startIdx || 0;
+    const key = signalKey(cfg);
     const rets = [], weights = [], dates = [], turnover = [];
     let nav = 1, w = null, prevW = null, costAcc = 0;
 
@@ -218,11 +342,11 @@
 
       if (w === null) {
         // 首期用当前信号建仓
-        const st = rollingStats(series, i, cfg.window, cfg.signal);
+        const st = rollingStats(series, i, cfg.window, key);
         w = equityWeight(st.pct, st.z, cfg);
       } else if ((i - startIdx) % (cfg.rebalance || 1) === 0) {
         // 调仓日：用上一期观测到的信号
-        const st = rollingStats(series, i - 1, cfg.window, cfg.signal);
+        const st = rollingStats(series, i - 1, cfg.window, key);
         w = equityWeight(st.pct, st.z, cfg);
       }
 
@@ -275,12 +399,15 @@
     const i = series.length - 1;
     if (i < 0) return null;
     const r = series[i];
+    const key = signalKey(cfg);
     const keys = ['erp', 'ratio', 'dyspread'];
     const stats = {};
     keys.forEach((k) => { stats[k] = rollingStats(series, i, cfg.window, k); });
 
-    const st = stats[cfg.signal];
-    const w = equityWeight(st.pct, st.z, cfg);
+    // 平滑口径：仓位建议用它，避免被单日跳动带跑
+    const statsSmooth = (key !== cfg.signal) ? rollingStats(series, i, cfg.window, key) : null;
+    const stSig = statsSmooth || stats[cfg.signal];
+    const w = equityWeight(stSig.pct, stSig.z, cfg);
 
     // 历史同期对照：ERP 处于不同历史分位时对应的 PE 与 Y10 水平
     const bands = [];
@@ -296,8 +423,13 @@
       pe: r.pe, pb: r.pb, div: r.div, close: r.close,
       ep: r.ep, y10: r.y10, erp: r.erp, ratio: r.ratio, dyspread: r.dyspread,
       stats: stats,
+      statsSmooth: statsSmooth,
+      signalKey: key,
+      erpS: r.erpS,
+      ratioS: r.ratioS,
       selected: cfg.signal,
       weight: w,
+      weightInput: { value: stSig.value, pct: stSig.pct, z: stSig.z, n: stSig.n },
       historyBands: bands,
       modDur: modDuration(r.y10),
     };
@@ -309,7 +441,7 @@
    */
   function forwardReturns(series, cfg, horizon) {
     horizon = horizon || 12;
-    const key = cfg.signal;
+    const key = signalKey(cfg);
     const N = series.length;
     const curPct = rollingStats(series, N - 1, cfg.window, key).pct;
     const eq = [], bd = [];
@@ -382,6 +514,8 @@
     clamp, mean, stdev, quantile, percentileRank, modDuration,
     buildSeries, rollingStats, equityWeight, perfMetrics, backtest,
     currentSnapshot, scenarios, forwardReturns,
+    // 日频相关
+    buildDaily, moveAvg, monthlySmooth, rollingChannel, signalKey,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;

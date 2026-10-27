@@ -7,13 +7,26 @@
 
   const E = window.EQBEngine;
   const D = window.EQBD;
-  const series = E.buildSeries(D.rows);
+
+  // ---- 日频序列（图表用）：约 3,500 个交易日 ----
+  // PE 由 Wind 月末权威值 + 日线收盘价比例推算，跨月自动重新锚定
+  const dser = E.buildDaily(D.daily || []);
+  const HAS_DAILY = dser.length > 100;
+  if (HAS_DAILY) {
+    E.moveAvg(dser, 'erp', 20);
+    E.moveAvg(dser, 'ratio', 20);
+  }
+  const smoothMap = HAS_DAILY ? E.monthlySmooth(dser) : null;
+
+  // ---- 月度序列（信号 / 回测 / 矩阵用）----
+  const series = E.buildSeries(D.rows, smoothMap);
   const charts = {};
 
   const DEFAULTS = {
     signal: 'erp', window: 120, map: 'pct',
     minW: 0.20, maxW: 0.90, zRange: 2,
     startIdx: 0, rebalance: 1, costBp: 5,
+    smooth: true,      // 仓位信号用 20 日平滑值（回测同步）
   };
   let cfg = Object.assign({}, DEFAULTS);
   let CHAN = 'roll';   // ERP 通道统计口径：roll | exp | fix | quant
@@ -218,10 +231,13 @@
   // ---------------- 渲染: KPI ----------------
   function renderKPI(snap) {
     document.getElementById('m-date').textContent = snap.date;
-    document.getElementById('m-n').textContent = series.length;
+    document.getElementById('m-n').textContent = HAS_DAILY
+      ? dser.length.toLocaleString('en-US') + ' 个交易日'
+      : series.length + ' 个月';
     document.getElementById('m-gen').textContent = D.meta.generated.slice(0, 10);
     document.getElementById('n-range').textContent = D.meta.range[0] + ' ~ ' + D.meta.range[1];
-    document.getElementById('n-count').textContent = series.length;
+    document.getElementById('n-count').textContent = series.length + ' 个月'
+      + (HAS_DAILY ? '，日频面板 ' + dser.length.toLocaleString('en-US') + ' 个交易日' : '');
 
     document.getElementById('k-ep').innerHTML = f.n2(snap.ep) + '<span class="unit">%</span>';
     document.getElementById('k-y10').innerHTML = f.n2(snap.y10) + '<span class="unit">%</span>';
@@ -236,13 +252,24 @@
       'Z=' + f.n2(st.z) + ' ｜ 中位 ' + f.n2(st.p50) + ' ｜ 区间 [' + f.n2(st.min) + ', ' + f.n2(st.max) + ']';
 
     const labels = { erp: 'E/P − Y10　越高＝股票越便宜', ratio: 'E/P ÷ Y10　倍数越大越便宜', dyspread: '股息率 − Y10　越厚越有底' };
-    document.getElementById('k-erp-foot').textContent = labels[cfg.signal];
+    let footTxt = labels[cfg.signal];
+    if (cfg.smooth && cfg.signal !== 'dyspread' && snap.weightInput) {
+      const sv = cfg.signal === 'erp' ? snap.erpS : snap.ratioS;
+      if (sv != null) {
+        footTxt += '　｜　20日均线 ' + f.n2(sv)
+          + (cfg.signal === 'erp' ? ' pct' : '×')
+          + '（分位 ' + f.n1(snap.weightInput.pct * 100) + '%，用于定仓位）';
+      }
+    }
+    document.getElementById('k-erp-foot').textContent = footTxt;
   }
 
   // ---------------- 渲染: 结论 ----------------
   function renderVerdict(snap, fw) {
     const st = snap.stats[cfg.signal];
-    const p = st.pct;
+    // 判定与仓位都用平滑口径（缺失时回退原始）
+    const stSig = (cfg.smooth && snap.statsSmooth) ? snap.statsSmooth : st;
+    const p = stSig.pct;
     const w = snap.weight;
     let tier, col, bg, verdict;
     if (p >= 0.85) { tier = '股票显著低估'; col = C.stock; bg = '#fdeceb'; verdict = '超配股票'; }
@@ -259,10 +286,11 @@
     const unitLabel = { erp: 'pct', ratio: '×', dyspread: 'pct' }[cfg.signal];
     const signalName = { erp: '股权风险溢价 ERP', ratio: '股债收益比', dyspread: '股息率差' }[cfg.signal];
     document.getElementById('v-signal').innerHTML =
-      '当前 <b>' + signalName + '</b> = <b>' + f.n2(st.value) + ' ' + unitLabel + '</b>，' +
+      '当前 <b>' + signalName + '</b> = <b>' + f.n2(st.value) + ' ' + unitLabel + '</b>' +
+      (stSig !== st ? '（20日均线 ' + f.n2(stSig.value) + '）' : '') + '，' +
       '处于' + windowLabel() + ' <b>' + f.n1(p * 100) + '%</b> 分位' +
-      '（Z = ' + f.n2(st.z) + '，较中位数 ' + f.n2(st.p50) + ' ' +
-      (st.value >= st.p50 ? '高出 ' : '低 ') + f.n2(Math.abs(st.value - st.p50)) + '）';
+      '（Z = ' + f.n2(stSig.z) + '，较中位数 ' + f.n2(stSig.p50) + ' ' +
+      (stSig.value >= stSig.p50 ? '高出 ' : '低 ') + f.n2(Math.abs(stSig.value - stSig.p50)) + '）';
 
     const eq = document.getElementById('v-bar-eq'), bd = document.getElementById('v-bar-bd');
     const eqPct = Math.round(w * 100);
@@ -308,32 +336,37 @@
 
   // ---------------- 渲染: 双线图 ----------------
   function renderYield() {
-    const ep = series.map((s) => +s.ep.toFixed(3));
-    const y10 = series.map((s) => s.y10);
-    const erp = series.map((s) => +s.erp.toFixed(3));
+    // 日频优先（3,500+ 个交易日）；数据缺失时自动退化为月度
+    const ds = HAS_DAILY ? dser : series;
+    const dDates = ds.map((s) => s.d || s.date || s.m);
+    const ep = ds.map((s) => +s.ep.toFixed(3));
+    const y10 = ds.map((s) => s.y10);
+    const erp = ds.map((s) => +s.erp.toFixed(3));
     // 沪深300 点位（右轴，对数）
-    const px = series.map((s) => (s.close == null ? null : Math.round(s.close)));
+    const px = ds.map((s) => (s.close == null ? null : Math.round(s.close)));
     const PX = '#b07d1a';
+    const lastI = ds.length - 1;
+    const last = ds[lastI];
 
     ensure('chart-yield').setOption({
-      grid: gd({ left: 52, right: 62, top: 46, bottom: 42 }),
+      grid: gd({ left: 52, right: 62, top: 46, bottom: 56 }),
       tooltip: Object.assign({}, TIP, {
         trigger: 'axis',
         axisPointer: { type: 'line', lineStyle: { color: C.txt3, type: 'dashed' } },
         formatter: (ps) => {
           const i = ps[0].dataIndex;
-          const pxTxt = series[i].close == null ? '—'
-            : Math.round(series[i].close).toLocaleString('en-US');
-          return '<b>' + series[i].m + '</b><br>' +
-            '<span style="color:' + C.stock + '">盈利收益率 E/P</span>：' + f.n2(series[i].ep) + '%<br>' +
-            '<span style="color:' + C.bond + '">10年国债 YTM</span>：' + f.n2(series[i].y10) + '%<br>' +
-            '<span style="color:#8e4b45">风险溢价 ERP</span>：<b>' + f.n2(series[i].erp) + ' pct</b><br>' +
+          const pxTxt = ds[i].close == null ? '—'
+            : Math.round(ds[i].close).toLocaleString('en-US');
+          return '<b>' + dDates[i] + '</b><br>' +
+            '<span style="color:' + C.stock + '">盈利收益率 E/P</span>：' + f.n2(ds[i].ep) + '%<br>' +
+            '<span style="color:' + C.bond + '">10年国债 YTM</span>：' + f.n2(ds[i].y10) + '%<br>' +
+            '<span style="color:#8e4b45">风险溢价 ERP</span>：<b>' + f.n2(ds[i].erp) + ' pct</b><br>' +
             '<span style="color:' + PX + '">沪深300</span>：' + pxTxt +
-            '　<span style="color:' + C.txt3 + '">PE ' + f.n2(series[i].pe) + '</span>';
+            '　<span style="color:' + C.txt3 + '">PE ' + f.n2(ds[i].pe) + '</span>';
         },
       }),
       legend: Object.assign(LEGEND(), { data: ['10年国债YTM', '盈利收益率 E/P', '沪深300'] }),
-      xAxis: Object.assign({ type: 'category', data: months, boundaryGap: false }, AXIS()),
+      xAxis: Object.assign({ type: 'category', data: dDates, boundaryGap: false }, AXIS()),
       yAxis: [
         Object.assign({ type: 'value', name: '%', scale: true, nameTextStyle: { color: C.txt3, fontSize: 11, padding: [0, 0, 0, -34] } }, AXIS()),
         Object.assign({}, AXIS(), {
@@ -344,10 +377,18 @@
           axisLabel: { color: PX, fontSize: 10, formatter: (v) => (v >= 1000 ? (v / 1000) + 'k' : v) },
         }),
       ],
+      dataZoom: [
+        { type: 'inside', throttle: 60 },
+        {
+          type: 'slider', height: NARROW ? 14 : 16, bottom: NARROW ? 6 : 8,
+          borderColor: C.line, fillerColor: 'rgba(47,111,237,.10)',
+          handleStyle: { color: C.bond }, textStyle: { color: C.txt3, fontSize: 10 },
+        },
+      ],
       series: [
         {
           name: '10年国债YTM', type: 'line', stack: 'tot', symbol: 'none',
-          lineStyle: { color: C.bond, width: 1.8 },
+          lineStyle: { color: C.bond, width: 1.6 },
           areaStyle: { color: 'rgba(47,111,237,.10)' },
           itemStyle: { color: C.bond }, data: y10,
         },
@@ -358,19 +399,22 @@
         },
         {
           name: '盈利收益率 E/P', type: 'line', symbol: 'none',
-          lineStyle: { color: C.stock, width: 2.2 },
+          lineStyle: { color: C.stock, width: 1.9 },
           itemStyle: { color: C.stock }, data: ep,
           markLine: {
             silent: true, symbol: 'none',
-            label: { formatter: '当前 ERP ' + f.n2(series[series.length - 1].erp), color: C.stock, fontSize: 10, position: 'insideEndTop' },
+            label: {
+              formatter: '当前 ERP ' + f.n2(last.erp),
+              color: C.stock, fontSize: 10, position: 'insideEndTop',
+            },
             lineStyle: { color: C.stock, type: 'dotted', opacity: .55 },
-            data: [{ xAxis: series.length - 1 }],
+            data: [{ xAxis: lastI }],
           },
         },
         {
           // 沪深300 点位（右轴对数，实线）——与 ERP 图保持同一视觉语言
           name: '沪深300', type: 'line', symbol: 'none', z: 3, yAxisIndex: 1,
-          lineStyle: { color: PX, width: 1.6, type: 'solid', opacity: .85 },
+          lineStyle: { color: PX, width: 1.4, type: 'solid', opacity: .8 },
           itemStyle: { color: PX }, data: px, tooltip: { show: false },
         },
       ],
@@ -384,35 +428,71 @@
    *  fix   固定全样本均值±σ（用完整历史一次性算出，轨道与极值重合度最高，
    *         但把「未来」也算进去了——只能复盘，不能当实盘信号）
    *  quant 滚动 P10–P90 分位带（对非正态/含极值的数据比 σ 通道稳健） */
-  function renderERP() {
-    const N = series.length;
-    const chanMode = CHAN;   // 模块级变量，由下拉控制
-    const mean = [], sd = [], val = [];
-    const q10 = [], q50 = [], q90 = [];
-
-    // fix 口径：整段序列一次性统计（等价于"用全部历史拟合"，含未来数据）
-    let fixMu = NaN, fixSd = NaN;
-    if (chanMode === 'fix') {
-      const all = [];
-      for (let i = 0; i < N; i++) { const v = series[i][cfg.signal]; if (v != null && isFinite(v)) all.push(v); }
-      fixMu = all.reduce((a, b) => a + b, 0) / all.length;
-      fixSd = Math.sqrt(all.reduce((a, b) => a + (b - fixMu) * (b - fixMu), 0) / all.length);
-    }
-
-    for (let i = 0; i < N; i++) {
-      if (chanMode === 'fix') {
-        const st = E.rollingStats(series, i, cfg.window, cfg.signal);
-        val.push(+st.value.toFixed(3));
-        mean.push(+fixMu.toFixed(3)); sd.push(fixSd);
-      } else if (chanMode === 'exp') {
-        const st = E.rollingStats(series, i, 0, cfg.signal);
-        val.push(+st.value.toFixed(3)); mean.push(+st.mean.toFixed(3)); sd.push(st.sd);
+  /** 通用通道计算：mean / sd 用滑动窗口 O(n)；分位带按 step 稀疏采样后阶梯填充。
+   *  ds 可以是日频或月度，win 单位与 ds 一致（0 = 扩张窗口）。 */
+  function rollingBand(ds, key, win, step) {
+    const n = ds.length;
+    const W = win > 0 ? win : n;
+    const val = new Array(n), mean = new Array(n), sd = new Array(n);
+    const p10 = new Array(n), p50 = new Array(n), p90 = new Array(n);
+    const q = [];
+    let s1 = 0, s2 = 0, c = 0;
+    for (let i = 0; i < n; i++) {
+      const v = ds[i][key];
+      const ok = v != null && isFinite(v);
+      val[i] = ok ? +v.toFixed(3) : null;
+      q.push(ok ? v : null);
+      if (ok) { s1 += v; s2 += v * v; c++; }
+      if (q.length > W) {
+        const o = q.shift();
+        if (o != null) { s1 -= o; s2 -= o * o; c--; }
+      }
+      if (c >= Math.min(W, 12)) {
+        const m = s1 / c;
+        mean[i] = +m.toFixed(3);
+        sd[i] = Math.sqrt(Math.max(0, s2 / c - m * m) * c / Math.max(1, c - 1));
       } else {
-        const st = E.rollingStats(series, i, chanMode === 'quant' ? Math.max(cfg.window, 60) : cfg.window, cfg.signal);
-        val.push(+st.value.toFixed(3)); mean.push(+st.mean.toFixed(3)); sd.push(st.sd);
-        q10.push(+st.p10.toFixed(3)); q50.push(+st.p50.toFixed(3)); q90.push(+st.p90.toFixed(3));
+        mean[i] = null; sd[i] = null;
       }
     }
+    // 分位：每 step 个点算一次（日频逐点排序太慢），其余按上一个标记阶梯填充
+    const marks = [];
+    for (let i = W - 1; i < n; i += step) {
+      const smp = [];
+      for (let k = i - W + 1; k <= i; k++) {
+        const v = ds[k][key];
+        if (v != null && isFinite(v)) smp.push(v);
+      }
+      if (smp.length < 12) continue;
+      smp.sort((a, b) => a - b);
+      marks.push({ i: i, a: E.quantile(smp, 0.1), b: E.quantile(smp, 0.5), c: E.quantile(smp, 0.9) });
+    }
+    let ptr = 0, cur = null;
+    for (let i = 0; i < n; i++) {
+      while (ptr < marks.length && marks[ptr].i <= i) { cur = marks[ptr]; ptr++; }
+      if (cur) { p10[i] = +cur.a.toFixed(3); p50[i] = +cur.b.toFixed(3); p90[i] = +cur.c.toFixed(3); }
+      else { p10[i] = null; p50[i] = null; p90[i] = null; }
+    }
+    return { val: val, mean: mean, sd: sd, p10: p10, p50: p50, p90: p90 };
+  }
+
+  function renderERP() {
+    const chanMode = CHAN;   // 模块级变量，由下拉控制
+    // 日频优先；股息率差没有日频数据源，回退月度
+    const useDaily = HAS_DAILY && cfg.signal !== 'dyspread';
+    const ds = useDaily ? dser : series;
+    const dDates = ds.map((s) => s.d || s.date || s.m);
+    const N = ds.length;
+
+    // 窗口换算：cfg.window 是月数，日频按 244 交易日/年折算
+    const winUnits = cfg.window === 0 ? 0
+      : (useDaily ? Math.round(cfg.window * 244 / 12) : cfg.window);
+    const win = chanMode === 'exp' ? 0
+      : (chanMode === 'quant' ? Math.max(winUnits, useDaily ? 1220 : 60) : winUnits);
+
+    const band = rollingBand(ds, cfg.signal, win, useDaily ? 10 : 1);
+    const val = band.val, mean = band.mean, sd = band.sd;
+    const q10 = band.p10, q50 = band.p50, q90 = band.p90;
 
     const unit = { erp: 'pct', ratio: '×', dyspread: 'pct' }[cfg.signal];
     const name = { erp: '股权风险溢价 ERP', ratio: '股债收益比', dyspread: '股息率差' }[cfg.signal];
@@ -429,7 +509,7 @@
         b2.push(null); b3.push(null); lo1.push(q10[i]); hi1.push(q90[i]); mLine.push(q50[i]);
         continue;
       }
-      if (!isFinite(sd[i])) { base.push(null); b1.push(null); b2.push(null); b3.push(null); lo1.push(null); hi1.push(null); mLine.push(mean[i]); continue; }
+      if (sd[i] == null || !isFinite(sd[i])) { base.push(null); b1.push(null); b2.push(null); b3.push(null); lo1.push(null); hi1.push(null); mLine.push(mean[i]); continue; }
       base.push(+(mean[i] - 2 * sd[i]).toFixed(3));
       b1.push(+(sd[i]).toFixed(3));
       b2.push(+(2 * sd[i]).toFixed(3));
@@ -440,8 +520,12 @@
     }
 
     // 沪深300 点位（右轴）
-    const px = series.map((s) => (s.close == null ? null : Math.round(s.close)));
+    const px = ds.map((s) => (s.close == null ? null : Math.round(s.close)));
     const PX = '#b07d1a';
+    // 20 日均线（仅 ERP 且有日频时叠加，用于展示平滑后的信号）
+    const maLine = (useDaily && cfg.signal === 'erp')
+      ? dser.map((s) => (s.erpMa20 == null ? null : +s.erpMa20.toFixed(3)))
+      : null;
 
     const meanLabel = { roll: '滚动均值', exp: '累计均值', fix: '全样本均值', quant: 'P50 中位' }[chanMode];
     const footEl = document.getElementById('erp-foot');
@@ -455,40 +539,45 @@
     }
 
     ensure('chart-erp').setOption({
-      grid: gd({ left: 52, right: 62, top: 46, bottom: 42 }),
+      grid: gd({ left: 52, right: 62, top: 46, bottom: 56 }),
       tooltip: Object.assign({}, TIP, {
         trigger: 'axis',
         axisPointer: { type: 'line', lineStyle: { color: C.txt3, type: 'dashed' } },
         formatter: (ps) => {
           const i = ps[0].dataIndex;
-          let head = '<b>' + series[i].m + '</b>';
+          let head = '<b>' + dDates[i] + '</b>';
+          const stepTxt = useDaily ? '较前日' : '较前月';
           if (isQuant) {
             if (q90[i] == null) return head + '<br>样本不足';
             let pxTxt = '—';
             if (px[i] != null) pxTxt = px[i].toLocaleString('en-US');
             return head + '<br>' + name + '：<b>' + f.n2(val[i]) + ' ' + unit + '</b><br>' +
               'P10 / P50 / P90：' + f.n2(q10[i]) + ' / ' + f.n2(q50[i]) + ' / ' + f.n2(q90[i]) + '<br>' +
-              '历史分位：<b>' + Math.round(E.rollingStats(series, i, Math.max(cfg.window, 60), cfg.signal).pct * 100) + '%</b><br>' +
+              (sd[i] ? 'Z-Score：<b>' + f.n2((val[i] - mean[i]) / sd[i]) + '</b><br>' : '') +
               '<span style="color:' + PX + '">沪深300</span>：' + pxTxt;
           }
-          if (!isFinite(sd[i])) return head + '<br>样本不足';
+          if (sd[i] == null || !isFinite(sd[i])) return head + '<br>样本不足';
           const z = (val[i] - mean[i]) / sd[i];
           let pxTxt = '—';
           if (px[i] != null) {
-            const pm = (i > 0 && series[i - 1].close) ? (series[i].close / series[i - 1].close - 1) : null;
+            const pm = (i > 0 && ds[i - 1].close) ? (ds[i].close / ds[i - 1].close - 1) : null;
             pxTxt = px[i].toLocaleString('en-US') +
-              (pm == null ? '' : '　<span style="color:' + C.txt3 + '">较前月 ' + f.p(pm, 1) + '</span>');
+              (pm == null ? '' : '　<span style="color:' + C.txt3 + '">' + stepTxt + ' ' + f.p(pm, 1) + '</span>');
           }
           return head + '<br>' +
             name + '：<b>' + f.n2(val[i]) + ' ' + unit + '</b><br>' +
+            (useDaily && maLine && maLine[i] != null
+              ? '20日均线：' + f.n2(maLine[i]) + '　' : '') +
             meanLabel + '：' + f.n2(mean[i]) + '　±1σ：' + f.n2(sd[i]) +
             (chanMode === 'fix' ? '　<span style="color:var(--down)">(含未来数据)</span>' : '') + '<br>' +
             'Z-Score：<b>' + f.n2(z) + '</b><br>' +
             '<span style="color:' + PX + '">沪深300</span>：' + pxTxt;
         },
       }),
-      legend: Object.assign(LEGEND(), { data: [name, meanLabel, '沪深300'] }),
-      xAxis: Object.assign({ type: 'category', data: months, boundaryGap: false }, AXIS()),
+      legend: Object.assign(LEGEND(), {
+        data: maLine ? [name, '20日均线', meanLabel, '沪深300'] : [name, meanLabel, '沪深300'],
+      }),
+      xAxis: Object.assign({ type: 'category', data: dDates, boundaryGap: false }, AXIS()),
       yAxis: [
         Object.assign({ type: 'value', name: unit, scale: true, nameTextStyle: { color: C.txt3, fontSize: 11, padding: [0, 0, 0, -34] } }, AXIS()),
         Object.assign({}, AXIS(), {
@@ -498,6 +587,14 @@
           axisLine: { show: false }, axisTick: { show: false },
           axisLabel: { color: PX, fontSize: 10, formatter: (v) => (v >= 1000 ? (v / 1000) + 'k' : v) },
         }),
+      ],
+      dataZoom: [
+        { type: 'inside', throttle: 60 },
+        {
+          type: 'slider', height: NARROW ? 14 : 16, bottom: NARROW ? 6 : 8,
+          borderColor: C.line, fillerColor: 'rgba(47,111,237,.10)',
+          handleStyle: { color: C.bond }, textStyle: { color: C.txt3, fontSize: 10 },
+        },
       ],
       series: [
         // 透明基准层：把堆叠起点抬到带底，否则第一段的填充会从 0 轴一路铺到底
@@ -533,7 +630,14 @@
           lineStyle: { color: PX, width: 1.5, type: 'solid', opacity: .75 },
           itemStyle: { color: PX }, data: px, tooltip: { show: false },
         },
-      ]),
+      ]).concat(maLine ? [
+        {
+          // 20 日均线＝仓位信号实际使用的平滑值，与原始 ERP 的差就是"噪声"
+          name: '20日均线', type: 'line', symbol: 'none', z: 6,
+          lineStyle: { color: '#1d3557', width: 1.9, opacity: .85 },
+          itemStyle: { color: '#1d3557' }, data: maLine, tooltip: { show: false },
+        },
+      ] : []),
     }, true);
   }
 
