@@ -12,3 +12,4 @@ _*.tmp
 .DS_Store
 Thumbs.db
 desktop.ini
+.wbapp_*.genie
