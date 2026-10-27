@@ -167,7 +167,9 @@ def fetch_yield_eastmoney():
         y2, sp = r.get("EMM00588704"), r.get("EMM01276014")
         if y2 is not None and sp is not None and abs((y10 - float(y2)) - float(sp)) > 0.02:
             print("      ! 东财字段自校验偏差偏大，结果仅供参考")
-        return dict(date=str(r.get("SOLAR_DATE", ""))[:10], y10=y10)
+        y30 = r.get("EMM00166469")
+        return dict(date=str(r.get("SOLAR_DATE", ""))[:10], y10=y10,
+                    y30=(float(y30) if y30 is not None else None))
     except Exception:
         return None
 
@@ -328,9 +330,11 @@ def main():
             changes.append("估值/价格 -> %s" % d)
 
     if y10:
+        # y1 没有公开免鉴权源，沿用上一交易日；y30 优先用本次取到的
         y_row = [y10["date"], "%.4f" % y10["y10"],
                  (last_yld[2] if last_yld and len(last_yld) > 2 else ""),
-                 (last_yld[3] if last_yld and len(last_yld) > 3 else "")]
+                 ("%.4f" % y10["y30"]) if y10.get("y30") is not None
+                 else (last_yld[3] if last_yld and len(last_yld) > 3 else "")]
         act = upsert_sorted(yld, 0, y_row)
         if act and not dry:
             write_rows(YLD_CSV, yld)
