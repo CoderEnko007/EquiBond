@@ -105,14 +105,14 @@
   <!-- ===== 双线图 + 通道图 ===== -->
   <section>
     <div class="sec-title"><h2>投资回报 VS 债券利息</h2><span class="hint">两条线的开口就是风险溢价，开口收窄往往是风险信号</span></div>
-    <div class="grid-2">
+    <div class="stack">
       <div class="chart-box">
-        <div id="chart-yield" class="chart"></div>
+        <div id="chart-yield" class="chart tall"></div>
         <div class="chart-foot">盈利收益率与十年期国债收益率（左轴，%）；沪深300 点位（右轴，对数）；阴影区＝ERP</div>
       </div>
       <div class="chart-box">
         <div class="chart-top">
-          <div id="chart-erp" class="chart"></div>
+          <div id="chart-erp" class="chart tall"></div>
           <select id="e-chan" class="mini-sel" title="通道统计口径">
             <option value="roll" selected>滚动均值 ±σ（跟随回看窗口）</option>
             <option value="exp">全样本累计均值 ±σ</option>

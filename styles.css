@@ -147,8 +147,12 @@ section { margin-bottom: 26px; }
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 16px 14px 8px; box-shadow: var(--shadow);
 }
+/* 纵向堆叠容器：日频曲线点位密集，两张图并排时每张只剩一半宽度，看不清走势 */
+.stack { display: grid; grid-template-columns: 1fr; gap: 16px; }
 .chart { width: 100%; height: 340px; }
 .chart.tall { height: 380px; }
+/* 日频主图给更高的画布，纵向能看清通道边界 */
+#chart-yield.tall, #chart-erp.tall { height: 420px; }
 .chart-head-row { display: flex; justify-content: flex-end; padding: 0 4px 2px; }
 .chart-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--line-soft); }
 .chart-switch button {
@@ -334,6 +338,8 @@ tr.hl td { background: #fff7f6; font-weight: 600; }
   /* 图表：降高度、贴边，留出更多横向绘图空间 */
   .chart-box { padding: 12px 8px 6px; border-radius: 12px; }
   .chart { height: 250px; }
+  /* 两张日频主图在手机上已独占一行，给足高度看通道 */
+  #chart-yield.tall, #chart-erp.tall { height: 300px; }
   .chart-foot { font-size: 10.5px; line-height: 1.55; padding: 3px 4px 5px; }
   .chart-top .mini-sel {
     top: 0; right: 2px; font-size: 10.5px; padding: 2px 4px;
