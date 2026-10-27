@@ -1,0 +1,5 @@
+appId: wbapp_ZdyGBnwNpwfDf90vfMX55B
+name: 股债性价比系统
+localDir: G:\Projects\workbuddy projects\EquiBond
+appType: web
+entryHtml: index.html
