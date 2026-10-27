@@ -188,7 +188,7 @@
     box.innerHTML = '最新数据点 <b>' + asOf + '</b> ｜ <span class="' + cls + '">' +
       level + ' ' + days + ' 天</span>' +
       (rf.live ? '　<span style="color:var(--down)">实时 ' + rf.live.close.toFixed(2) + '</span>' : '') +
-      (rf.y10_source ? '<br>国债YTM 取自 <b>' + rf.y10_source + '</b>（无免费实时源）' : '');
+      (rf.y10_source ? '<br>国债YTM 取自 <b>' + rf.y10_source + '</b>（当日曲线 17:30 后发布）' : '');
 
     // 需要提示的情况
     const msgs = [];

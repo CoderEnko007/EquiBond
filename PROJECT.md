@@ -606,7 +606,7 @@ weight = equityWeight(pct, z, cfg)
 |---|:---:|---|---|
 | 沪深300 收盘价 | ✅ 每交易日 | 新浪 `hq.sinajs.cn` + 东财 `push2.eastmoney.com` | 双源交叉校验，偏差 >1% 时以新浪为准 |
 | PE / PB / 股息率 | ✅ 推算 | 无免费权威源 | 见 [7.2](#72-pe-的滚动推算) |
-| 10 年期国债 YTM | ❌ 手动 | 无免鉴权接口 | 见 [7.4](#74-国债收益率的缺口) |
+| 10 年期国债 YTM | ✅ 每交易日 | 东方财富 `RPTA_WEB_TREASURYYIELD` | 免鉴权；当日曲线 17:30 后发布，见 [7.4](#74-国债收益率的来源) |
 
 ### 7.2 PE 的滚动推算
 
@@ -655,40 +655,51 @@ PB_today    = PB_anchor × (Close_today / Close_anchor)
    python scripts/update.py --calibrate
    ```
 
-### 7.4 国债收益率的缺口
+### 7.4 国债收益率的来源
 
-**这是整条链路上唯一的缺口。** 实测结论：
+实测结论（2026-10-27 复核）：
 
 | 候选源 | 结果 |
 |---|---|
 | 中债估值 yield.chinabond.com.cn | 需鉴权 |
-| 中国货币网 chinamoney.com.cn | 接口 404 / 返回非预期结构 |
-| 东方财富国债收益率曲线 | 无开放的免鉴权接口 |
+| 中国货币网 chinamoney.com.cn | 接口 404（2026-10 起失效） |
+| **东方财富 `RPTA_WEB_TREASURYYIELD`** | ✅ **可用**，免鉴权、日频，已作为默认源 |
 
-`scripts/update.py` 里预留了**插件式**的源注册表，找到可用源后加一个返回 `{date, y10}` 的函数并注册即可，其余代码完全不用动：
+东财接口：
+
+```
+https://datacenter-web.eastmoney.com/api/data/v1/get
+  ?reportName=RPTA_WEB_TREASURYYIELD&columns=ALL
+  &pageNumber=1&pageSize=1&sortTypes=-1&sortColumns=SOLAR_DATE
+  &source=WEB&client=WEB        # 需带 Referer: https://data.eastmoney.com/
+```
+
+字段映射：`EMM00166466` = 10Y，`EMM00588704` = 2Y，`EMM00166469` = 30Y，`EMM01276014` = 10Y−2Y 利差。脚本用「10Y − 2Y 是否等于利差字段」做自校验，防止字段错位。口径与 Wind 对齐得很近（10-23：东财 1.6400 / Wind 1.6411，差 0.1bp）。
+
+**唯一限制**：当日收益率曲线一般 **17:30 之后**才发布，白天运行时拿到的是上一交易日，脚本会在末尾标注实际取值日期。
+
+`scripts/update.py` 仍是**插件式**源注册表，再加源只需一个返回 `{date, y10}` 的函数：
 
 ```python
 def fetch_yield_xxx():
     txt = http_get("https://...")
     if not txt: return None
-    # 解析出 date (YYYY-MM-DD) 和 y10 (float, 单位 %)
-    return dict(date=..., y10=...)
+    # 解析出 date (YYYY-MM-DD) 和 y10 (float, 单位 %)；可选带 y30
+    return dict(date=..., y10=..., y30=...)
 
 YIELD_SOURCES = [
-    ("中国货币网", fetch_yield_chinamoney),
-    ("XXX", fetch_yield_xxx),          # ← 新源加这里，按顺序尝试
+    ("东方财富", fetch_yield_eastmoney),   # ← 默认，已验证可用
+    ("中国货币网", fetch_yield_chinamoney), # ← 已失效，仅作兜底
 ]
 ```
-
-在此之前：**对我说一句「更新股债数据」**，我用 westock MCP 的 `cn_yield_curve` 拉银行间国债收益率曲线补上。
 
 ### 7.5 页面上的新鲜度反馈
 
 右上角状态行格式为：
 
 ```
-最新数据点 2026-10-26 ｜ 最新 0 天 ｜ 实时 4095.08
-国债YTM 取自 2026-10-23（无免费实时源）
+最新数据点 2026-10-27 ｜ 最新 0 天 ｜ 实时 4049.55
+国债YTM 取自 2026-10-26（当日曲线 17:30 后发布）
 ```
 
 | 天数 | 等级 | 颜色 |
@@ -864,7 +875,7 @@ msedge --headless=new --disable-gpu --virtual-time-budget=9000 --dump-dom "http:
 
 ### 11.3 新增国债收益率数据源
 
-见 [7.4](#74-国债收益率的缺口)，在 `YIELD_SOURCES` 注册即可。
+见 [7.4](#74-国债收益率的来源)，在 `YIELD_SOURCES` 注册即可。现有东财源已验证可用，新源按顺序兜底。
 
 ### 11.4 想把回测频率换成日频
 
@@ -923,7 +934,7 @@ cmd /c cd /d "G:\Projects\workbuddy projects\EquiBond" && python scripts\update.
 | 运行结果提示"两源偏差过大" | 新浪与东财的快照时点不同（一个是实时，一个是收盘） | 正常现象，脚本已自动以新浪为准。若长期异常检查网络代理。 |
 | PE 数值看着不对 | 跨过财报期导致推算失真 | 执行 [7.3](#73-财报期失真与-calibrationjson) 的校准流程 |
 | 页面顶部弹红色提示条 | 锚点超过 110 天 | 同上 |
-| 国债日期一直停在旧日期 | 无免费实时源 | 让我执行「更新股债数据」，或按 [7.4](#74-国债收益率的缺口) 自己加源 |
+| 国债日期停在旧日期 | 当日曲线 17:30 后才发布；白天跑只能拿到上一交易日 | 18:00 后重跑 `start.bat`，或看 [7.4](#74-国债收益率的来源) |
 | 改了参数回测没变 | 可能是联动保护把另一个滑块也推走了 | 看一眼两个滑块的数值是否符合预期 |
 | 通道图颜色糊成一片 | 堆叠的透明 `base` 层被误删 | 核对 `chart-erp` 的 `series` 数量为 9，`base` 系列存在 |
 | `build_dataset.py` 报"没有可用的对齐月份" | 三份 CSV 没有重叠月份 | 检查 CSV 的日期范围是否有交集 |
