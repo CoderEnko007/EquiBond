@@ -141,9 +141,37 @@ def fetch_hs300_price():
 
 
 # ---- 国债收益率候选源 ----
-# 说明：中债估值、财政部、chinamoney 都没有稳定的免鉴权接口。
+# 说明：中债估值、财政部都没有稳定的免鉴权接口。
 #       找到可用源后，在下面加一个返回 {date, y10} 的函数并注册进 YIELD_SOURCES 即可，
 #       无需改动其它代码。
+def fetch_yield_eastmoney():
+    """东方财富「中债国债收益率曲线」（免鉴权，日频）。
+    字段：EMM00166466 = 10Y，EMM00588704 = 2Y，EMM01276014 = 10Y-2Y 利差。
+    注意：当日曲线一般 17:30 之后才发布，白天取到的是上一交易日。"""
+    url = ("https://datacenter-web.eastmoney.com/api/data/v1/get"
+           "?reportName=RPTA_WEB_TREASURYYIELD&columns=ALL"
+           "&pageNumber=1&pageSize=1&sortTypes=-1&sortColumns=SOLAR_DATE"
+           "&source=WEB&client=WEB")
+    txt = http_get(url, headers={"Referer": "https://data.eastmoney.com/"})
+    if not txt:
+        return None
+    try:
+        rows = (json.loads(txt).get("result") or {}).get("data") or []
+        if not rows:
+            return None
+        r = rows[0]
+        if r.get("EMM00166466") is None:
+            return None
+        y10 = float(r["EMM00166466"])
+        # 交叉校验：10Y - 2Y 应等于接口自带的利差字段，否则说明字段错位
+        y2, sp = r.get("EMM00588704"), r.get("EMM01276014")
+        if y2 is not None and sp is not None and abs((y10 - float(y2)) - float(sp)) > 0.02:
+            print("      ! 东财字段自校验偏差偏大，结果仅供参考")
+        return dict(date=str(r.get("SOLAR_DATE", ""))[:10], y10=y10)
+    except Exception:
+        return None
+
+
 def fetch_yield_chinamoney():
     txt = http_get("https://www.chinamoney.com.cn/r/cms/www/chinamoney/data/bond/bkccpr.json")
     if not txt or "Error" in txt:
@@ -159,6 +187,7 @@ def fetch_yield_chinamoney():
 
 
 YIELD_SOURCES = [
+    ("东方财富", fetch_yield_eastmoney),
     ("中国货币网", fetch_yield_chinamoney),
 ]
 
