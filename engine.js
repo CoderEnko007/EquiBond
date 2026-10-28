@@ -91,6 +91,9 @@
           rec.erpS = sm.erpS;
           rec.ratioS = sm.ratioS;
           rec.smoothDate = sm.d;
+          rec.ma60 = sm.ma60 == null ? null : sm.ma60;   // 60 日线（趋势确认用）
+          rec.vol = sm.vol == null ? null : sm.vol;
+          rec.volZ = sm.volZ == null ? null : sm.volZ;
         }
       }
 
@@ -139,6 +142,7 @@
         pe: pe,
         y10: y10,
         close: r[3],
+        vol: (r[4] == null ? null : r[4]),   // 成交量（亿股），可选
         ep: ep,
         erp: ep - y10,
         ratio: ep / y10,
@@ -169,6 +173,37 @@
   }
 
   /**
+   * 成交量情绪：对 log(成交量) 做 rolling 均值/标准差，输出 z-score
+   * 正值＝近期放量（情绪升温），负值＝缩量（观望/地量）
+   * @param {Array} series 日频面板
+   * @param {number} n 窗口交易日数，默认 20
+   */
+  function volZ(series, n) {
+    n = n || 20;
+    const buf = [];
+    let s1 = 0, s2 = 0, c = 0;
+    for (let i = 0; i < series.length; i++) {
+      const v = series[i].vol;
+      const lv = (v != null && v > 0) ? Math.log(v) : null;
+      buf.push(lv);
+      if (lv != null) { s1 += lv; s2 += lv * lv; c++; }
+      if (buf.length > n) {
+        const o = buf.shift();
+        if (o != null) { s1 -= o; s2 -= o * o; c--; }
+      }
+      series[i].volMa = c ? Math.exp(s1 / c) : null;   // 窗口内日均成交量（亿股）
+      if (c >= Math.max(5, Math.floor(n * 0.8))) {
+        const m = s1 / c;
+        const sd = Math.sqrt(Math.max(0, s2 / c - m * m) * c / Math.max(1, c - 1));
+        series[i].volZ = sd > 0 ? (lv - m) / sd : null;
+      } else {
+        series[i].volZ = null;
+      }
+    }
+    return series;
+  }
+
+  /**
    * 取每月最后一个交易日的（原始值 + 平滑值），回灌到月度面板做信号
    * @returns {Object} { 'YYYY-MM': { d, erp, erpS, ratio, ratioS } }
    */
@@ -186,6 +221,10 @@
         erpS: r.erpMa20 != null ? r.erpMa20 : r.erp,   // 序列开头不足 20 日时回退原值
         ratio: r.ratio,
         ratioS: r.ratioMa20 != null ? r.ratioMa20 : r.ratio,
+        close: r.close,
+        ma60: r.closeMa60 != null ? r.closeMa60 : null,
+        vol: r.vol,
+        volZ: r.volZ != null ? r.volZ : null,
       };
     });
     return out;
@@ -509,13 +548,110 @@
     });
   }
 
+  // ---------------- 买卖信号（离散事件） ----------------
+  /** 第 i 期之后 h 个月的累计收益（用于事后检验） */
+  function fwdRet(series, i, h, key) {
+    const k = key || 'retEq';
+    let a = 1;
+    for (let j = 1; j <= h; j++) {
+      const r = series[i + j];
+      if (!r || r[k] == null) return null;
+      a *= 1 + r[k];
+    }
+    return a - 1;
+  }
+
+  /**
+   * 买卖点：估值定方向、趋势确认卖点（实测优于双向确认，见 scripts/combo*_test.js）
+   *   买入：信号分位 >= buyPct —— 不等趋势转身，否则会踏空底部第一段
+   *   卖出：信号分位 <= sellPct 且 收盘跌破 60 日线 —— 估值往往提前几个月预警，
+   *         等趋势走坏再走，能躲过「卖太早」（2015 卖点从 3534 推到 4473）
+   * 月末评估、次月生效，与回测同口径。
+   * @returns {Array} [{ i, m, d, type:'buy'|'sell', close, pct, z, erp, erpS, ma60, volZ, fwd6, fwd12, weight }]
+   */
+  function tradeSignals(series, cfg, opts) {
+    const o = opts || {};
+    const buyPct = o.buyPct == null ? 0.65 : o.buyPct;
+    const sellPct = o.sellPct == null ? 0.35 : o.sellPct;
+    const minN = o.minN == null ? 24 : o.minN;
+    const key = signalKey(cfg);
+    const out = [];
+    let state = 'flat';
+
+    for (let i = 0; i < series.length; i++) {
+      const r = series[i];
+      const v = r[key];
+      if (v == null || !isFinite(v)) continue;
+      const st = rollingStats(series, i, cfg.window, key);
+      if (st.n < minN) continue;
+
+      let type = null;
+      if (state === 'flat' && st.pct >= buyPct) {
+        type = 'buy'; state = 'long';
+      } else if (state === 'long' && st.pct <= sellPct &&
+                 r.ma60 != null && r.close != null && r.close < r.ma60) {
+        type = 'sell'; state = 'flat';
+      }
+      if (!type) continue;
+
+      out.push({
+        i: i, m: r.m, d: r.date, type: type,
+        close: r.close, pct: st.pct, z: st.z,
+        erp: r.erp, erpS: r.erpS, ma60: r.ma60, volZ: r.volZ,
+        weight: equityWeight(st.pct, st.z, cfg),
+        fwd6: fwdRet(series, i, 6),
+        fwd12: fwdRet(series, i, 12),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * 信号配对后的持仓段统计：每个买点到下一个卖点（或数据末尾）
+   * @returns {Array} [{ buyM, sellM, months, ret, open }]
+   */
+  function holdSegments(series, sigs) {
+    const segs = [];
+    let cur = null;
+    for (let k = 0; k < sigs.length; k++) {
+      const s = sigs[k];
+      if (s.type === 'buy') {
+        if (cur) continue;
+        cur = { buyM: s.m, buyClose: s.close, buyPct: s.pct, buyIdx: s.i };
+      } else if (s.type === 'sell' && cur) {
+        let a = 1;
+        for (let j = cur.buyIdx + 1; j <= s.i; j++) {
+          if (series[j] && series[j].retEq != null) a *= 1 + series[j].retEq;
+        }
+        segs.push(Object.assign(cur, {
+          sellM: s.m, sellClose: s.close, months: s.i - cur.buyIdx,
+          ret: a - 1, open: false,
+        }));
+        cur = null;
+      }
+    }
+    if (cur) {
+      let a = 1;
+      for (let j = cur.buyIdx + 1; j < series.length; j++) {
+        if (series[j] && series[j].retEq != null) a *= 1 + series[j].retEq;
+      }
+      segs.push(Object.assign(cur, {
+        sellM: null, sellClose: null, months: series.length - 1 - cur.buyIdx,
+        ret: a - 1, open: true,
+      }));
+    }
+    return segs;
+  }
+
   // ---------------- 导出 ----------------
   const Engine = {
     clamp, mean, stdev, quantile, percentileRank, modDuration,
     buildSeries, rollingStats, equityWeight, perfMetrics, backtest,
     currentSnapshot, scenarios, forwardReturns,
     // 日频相关
-    buildDaily, moveAvg, monthlySmooth, rollingChannel, signalKey,
+    buildDaily, moveAvg, monthlySmooth, rollingChannel, signalKey, volZ,
+    // 买卖信号
+    tradeSignals, holdSegments, fwdRet,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;

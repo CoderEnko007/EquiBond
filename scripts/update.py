@@ -142,7 +142,8 @@ def fetch_hs300_price():
 
 
 def fetch_hs300_daily():
-    """新浪日线（最近 4000 根，约覆盖 15 年），返回 {YYYY-MM-DD: close}。
+    """新浪日线（最近 4000 根，约覆盖 15 年），返回 {YYYY-MM-DD: {close, vol}}。
+    vol 为成交量（股），用于情绪指标；接口不返回时置 None。
     与实时接口同源、口径一致，供前端日频图表使用。
     注意：东财 push2his 的 kline 接口在频繁请求后会直接断连，别用它做兜底。"""
     url = ("https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
@@ -164,8 +165,14 @@ def fetch_hs300_daily():
             v = float(c)
         except (TypeError, ValueError):
             continue
-        if v > 0:
-            out[d] = v
+        if v <= 0:
+            continue
+        vol = None
+        try:
+            vol = float(it.get("volume")) if it.get("volume") not in (None, "") else None
+        except (TypeError, ValueError):
+            vol = None
+        out[d] = dict(close=v, vol=vol)
     return out or None
 
 
@@ -323,7 +330,8 @@ def main():
         daily = fetch_hs300_daily()
         if daily:
             last_d = max(daily)
-            print("      -> %d 条  最新 %s  收盘 %.2f" % (len(daily), last_d, daily[last_d]))
+            print("      -> %d 条  最新 %s  收盘 %.2f" %
+                  (len(daily), last_d, daily[last_d]["close"]))
         else:
             print("      -> 未取到日线，沿用本地 %s" % DAILY_CSV)
 
@@ -392,9 +400,11 @@ def main():
         month_upsert(px, new_px_row)
         write_rows(PX_CSV, px)
     if daily:
-        drows = [["date", "close"]]
+        drows = [["date", "close", "volume"]]
         for d0 in sorted(daily):
-            drows.append([d0, "%.3f" % daily[d0]])
+            it = daily[d0]
+            v = it.get("vol")
+            drows.append([d0, "%.3f" % it["close"], ("%.0f" % v) if v else ""])
         write_rows(DAILY_CSV, drows)
         print("[日线] 写入 %s  %d 条（%s ~ %s）"
               % (DAILY_CSV, len(daily), min(daily), max(daily)))

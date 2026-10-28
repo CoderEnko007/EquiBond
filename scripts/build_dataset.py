@@ -54,15 +54,17 @@ def month_key(d):
     return d[:7]
 
 
-def build_daily(daily_map, val_rows, yld_rows):
+def build_daily(daily_map, val_rows, yld_rows, vol_map=None):
     """日频面板：用「最近一个权威 PE 日」做锚点，按收盘价比例推算每个交易日的 PE。
 
     为什么这样算：PE = 总市值 / 总盈利。月内盈利不变，PE 与价格严格成正比；
     跨月（尤其 4/8/10 财报季）盈利会跳变，所以每到新的权威日就重新锚定一次，
     这样盈利更新被自动吸收，不会像"整月用一个固定 PE"那样系统性偏错。
 
-    返回 [["YYYY-MM-DD", pe, y10, close], ...]，升序。
+    返回 [["YYYY-MM-DD", pe, y10, close, vol], ...]，升序。
+    vol = 成交量（亿股，1 位小数），无数据时省略该位。
     """
+    vol_map = vol_map or {}
     y10 = {}
     for r in yld_rows:
         v = fval(r.get("y10"))
@@ -103,7 +105,11 @@ def build_daily(daily_map, val_rows, yld_rows):
             last_y = v
         if v is None:
             continue
-        out.append([d, round(pe, 2), round(v, 4), round(daily_map[d], 2)])
+        row = [d, round(pe, 2), round(v, 4), round(daily_map[d], 2)]
+        vv = vol_map.get(d)
+        if vv:
+            row.append(round(vv / 1e8, 1))   # 成交量 → 亿股
+        out.append(row)
     return out
 
 
@@ -115,6 +121,7 @@ def main():
 
     # 日频收盘价（可选：缺失时退化为纯月度面板）
     daily_map = {}
+    vol_map = {}
     dpath = os.path.join(RAW, "hs300_price_daily.csv")
     if os.path.exists(dpath):
         with open(dpath, "r", encoding="utf-8-sig") as f:
@@ -123,7 +130,11 @@ def main():
                 c = fval(r.get("close"))
                 if d and c and d >= "2012-01-01":
                     daily_map[d] = c
-        print("  载入 %-32s %4d 行" % ("hs300_price_daily.csv", len(daily_map)))
+                    vv = fval(r.get("volume"))
+                    if vv:
+                        vol_map[d] = vv
+        print("  载入 %-32s %4d 行%s" % ("hs300_price_daily.csv", len(daily_map),
+                                     ("，含成交量 %d 行" % len(vol_map)) if vol_map else ""))
     else:
         print("  · 无 hs300_price_daily.csv，仅输出月度面板")
 
@@ -193,7 +204,7 @@ def main():
     if not usable:
         sys.exit("[x] 没有可用的对齐月份，检查原始数据")
 
-    daily = build_daily(daily_map, val_rows, yld_rows)
+    daily = build_daily(daily_map, val_rows, yld_rows, vol_map)
 
     meta = dict(
         generated=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

@@ -15,6 +15,8 @@
   if (HAS_DAILY) {
     E.moveAvg(dser, 'erp', 20);
     E.moveAvg(dser, 'ratio', 20);
+    E.moveAvg(dser, 'close', 60);   // 60 日线：买卖信号的趋势确认
+    E.volZ(dser, 20);               // 成交量情绪（对数 z-score）
   }
   const smoothMap = HAS_DAILY ? E.monthlySmooth(dser) : null;
 
@@ -917,6 +919,191 @@
     document.getElementById('t-matrix').innerHTML = html;
   }
 
+  // ---------------- 渲染: 买卖信号 ----------------
+  /* 规则（阈值与效果见 scripts/combo3_test.js 的对照回测）：
+   *   买：ERP 分位 ≥ 65% —— 估值给方向就动手，不等趋势转身，否则踏空底部第一段
+   *   卖：ERP 分位 ≤ 35% 且 收盘跌破 60 日线 —— 顶部估值常提前几个月预警，
+   *       等趋势走坏再卖，避开「2015-01 卖在 3534、之后还涨 52%」那种卖太早
+   * 评估频率与仓位建议/回测一致：月末出信号，次月执行。 */
+  function renderSignals() {
+    const sigs = E.tradeSignals(series, cfg);
+    const segs = E.holdSegments(series, sigs);
+
+    const ds = HAS_DAILY ? dser : series;
+    const dates = ds.map((s) => s.d || s.date || s.m);
+    const px = ds.map((s) => (s.close == null ? null : Math.round(s.close)));
+    const ma60 = HAS_DAILY
+      ? dser.map((s) => (s.closeMa60 == null ? null : +s.closeMa60.toFixed(1)))
+      : null;
+    const vol = ds.map((s) => (s.vol == null ? null : s.vol));
+    const vz = ds.map((s) => (s.volZ == null ? null : +s.volZ.toFixed(2)));
+
+    const idxOfMonth = {};
+    ds.forEach((s, i) => { idxOfMonth[s.m] = i; });
+
+    const PX = '#b07d1a', BUY = C.stock, SELL = '#12a05c';
+    const marks = [];
+    sigs.forEach((s) => {
+      const i = idxOfMonth[s.m];
+      if (i == null || px[i] == null) return;
+      const buy = s.type === 'buy';
+      marks.push({
+        coord: [dates[i], px[i]],
+        symbol: 'triangle',
+        symbolRotate: buy ? 0 : 180,
+        symbolSize: NARROW ? 9 : 11,
+        symbolOffset: buy ? [0, -11] : [0, 11],
+        itemStyle: { color: buy ? BUY : SELL, borderColor: '#fff', borderWidth: 1 },
+        label: {
+          show: true, position: buy ? 'top' : 'bottom', distance: 5,
+          formatter: (buy ? '买 ' : '卖 ') + s.m.slice(2),
+          color: buy ? BUY : SELL, fontSize: NARROW ? 9 : 10, fontWeight: 600,
+        },
+      });
+    });
+
+    // ---- 图：上格价格 + 买卖点，下格成交量与情绪 z ----
+    const g0 = { left: 52, right: 62, top: 44, height: '55%' };
+    const g1 = { left: 52, right: 62, top: '69%', height: '13%' };
+    if (NARROW) {
+      g0.left = 44; g0.right = 46; g0.top = 40;
+      g1.left = 44; g1.right = 46; g1.top = '68%';
+    }
+
+    ensure('chart-signal').setOption({
+      grid: [g0, g1],
+      axisPointer: { link: [{ xAxisIndex: 'all' }], label: { backgroundColor: '#3a4352' } },
+      tooltip: Object.assign({}, TIP, {
+        trigger: 'axis',
+        formatter: (ps) => {
+          if (!ps.length) return '';
+          const i = ps[0].dataIndex;
+          const s = sigs.filter((x) => idxOfMonth[x.m] === i)[0];
+          const prev = i > 0 ? ds[i - 1].close : null;
+          const chg = (prev && ds[i].close) ? ds[i].close / prev - 1 : null;
+          let t = '<b>' + dates[i] + '</b><br>' +
+            '<span style="color:' + PX + '">沪深300</span>：' + (px[i] == null ? '—' : px[i].toLocaleString('en-US')) +
+            (chg == null ? '' : '　<span style="color:' + (chg >= 0 ? C.stock : '#12a05c') + '">' + f.p(chg, 2) + '</span>') +
+            '<br><span style="color:' + C.txt3 + '">ERP</span>：' + f.n2(ds[i].erp) + ' pct' +
+            '　<span style="color:' + C.txt3 + '">PE</span>：' + f.n2(ds[i].pe);
+          if (ma60 && ma60[i] != null) t += '<br>60 日线：' + f.n1(ma60[i]);
+          if (vol[i] != null) {
+            t += '<br>成交量：' + f.n1(vol[i]) + ' 亿股' +
+              (vz[i] == null ? '' : '　情绪 σ ' + (vz[i] > 0 ? '+' : '') + f.n2(vz[i]));
+          }
+          if (s) {
+            t += '<br><b style="color:' + (s.type === 'buy' ? BUY : SELL) + '">' +
+              (s.type === 'buy' ? '▲ 买入信号' : '▼ 卖出信号') + '</b>　分位 ' + f.n1(s.pct * 100) + '%';
+          }
+          return t;
+        },
+      }),
+      legend: Object.assign(LEGEND(), {
+        data: ['沪深300', '60日线', '成交量', '成交量情绪 σ'],
+      }),
+      xAxis: [
+        Object.assign({ type: 'category', data: dates, boundaryGap: false, gridIndex: 0, axisLabel: { show: false } }, AXIS()),
+        Object.assign({ type: 'category', data: dates, boundaryGap: false, gridIndex: 1 }, AXIS()),
+      ],
+      yAxis: [
+        Object.assign({}, AXIS(), {
+          type: 'log', name: '', scale: true, gridIndex: 0,
+          axisLabel: { color: PX, fontSize: 10, formatter: (v) => (v >= 1000 ? (v / 1000) + 'k' : v) },
+          splitLine: { lineStyle: { color: C.soft } },
+        }),
+        Object.assign({}, AXIS(), {
+          type: 'value', name: '亿股', gridIndex: 1, scale: true,
+          nameTextStyle: { color: C.txt3, fontSize: 10, padding: [0, 0, 0, -30] },
+          axisLabel: { color: C.txt3, fontSize: 9, showMinLabel: false },
+          splitLine: { show: false },
+        }),
+        Object.assign({}, AXIS(), {
+          type: 'value', name: '', gridIndex: 1, position: 'right',
+          axisLabel: { color: C.purple, fontSize: 9 },
+          axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false },
+        }),
+      ],
+      dataZoom: [
+        { type: 'inside', xAxisIndex: [0, 1], throttle: 60 },
+        {
+          type: 'slider', xAxisIndex: [0, 1], height: NARROW ? 14 : 16, bottom: NARROW ? 6 : 8,
+          borderColor: C.line, fillerColor: 'rgba(47,111,237,.10)',
+          handleStyle: { color: C.bond }, textStyle: { color: C.txt3, fontSize: 10 },
+        },
+      ],
+      series: [
+        {
+          name: '沪深300', type: 'line', xAxisIndex: 0, yAxisIndex: 0, symbol: 'none', z: 5,
+          lineStyle: { color: PX, width: 1.7 }, itemStyle: { color: PX }, data: px,
+          markPoint: { data: marks, silent: true },
+        },
+        ma60 ? {
+          name: '60日线', type: 'line', xAxisIndex: 0, yAxisIndex: 0, symbol: 'none', z: 4,
+          lineStyle: { color: 'rgba(70,80,95,.55)', width: 1.2, type: 'dashed' },
+          itemStyle: { color: 'rgba(70,80,95,.55)' }, data: ma60, tooltip: { show: false },
+        } : { name: '60日线', type: 'line', data: [] },
+        {
+          name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1,
+          itemStyle: { color: 'rgba(47,111,237,.28)' },
+          data: vol, tooltip: { show: false }, barMaxWidth: 6,
+        },
+        {
+          name: '成交量情绪 σ', type: 'line', xAxisIndex: 1, yAxisIndex: 2, symbol: 'none', z: 6,
+          lineStyle: { color: C.purple, width: 1.4 }, itemStyle: { color: C.purple },
+          data: vz, tooltip: { show: false },
+          markLine: {
+            silent: true, symbol: 'none',
+            lineStyle: { color: 'rgba(123,82,201,.35)', width: 1, type: 'dotted' },
+            label: { show: false },
+            data: [{ yAxis: 0 }, { yAxis: 2 }, { yAxis: -2 }],
+          },
+        },
+      ],
+    }, true);
+
+    // ---- 表：信号明细（新→旧）----
+    let h = '<thead><tr><th>评估日</th><th>信号</th><th>收盘</th><th>ERP</th>' +
+      '<th>信号分位</th><th>成交量 σ</th><th>后 6 个月</th><th>后 12 个月</th></tr></thead><tbody>';
+    sigs.slice().reverse().forEach((s) => {
+      const buy = s.type === 'buy';
+      h += '<tr><td>' + s.m + '</td>' +
+        '<td class="' + (buy ? 'pos' : 'neg') + '"><b>' + (buy ? '▲ 买入' : '▼ 卖出') + '</b></td>' +
+        '<td class="num">' + (s.close == null ? '—' : Math.round(s.close).toLocaleString('en-US')) + '</td>' +
+        '<td class="num">' + f.n2(s.erp) + '</td>' +
+        '<td class="num">' + f.n1(s.pct * 100) + '%</td>' +
+        '<td class="num">' + (s.volZ == null ? '—' : (s.volZ > 0 ? '+' : '') + f.n2(s.volZ)) + '</td>' +
+        '<td class="num ' + (s.fwd6 == null ? '' : (s.fwd6 >= 0 ? 'pos' : 'neg')) + '">' +
+        (s.fwd6 == null ? '—' : f.sign(s.fwd6)) + '</td>' +
+        '<td class="num ' + (s.fwd12 == null ? '' : (s.fwd12 >= 0 ? 'pos' : 'neg')) + '">' +
+        (s.fwd12 == null ? '—' : f.sign(s.fwd12)) + '</td></tr>';
+    });
+    if (!sigs.length) {
+      h += '<tr><td colspan="8" style="text-align:center;color:#8e97a6">当前参数下没有触发任何信号</td></tr>';
+    }
+    document.getElementById('t-signal').innerHTML = h + '</tbody>';
+
+    // ---- 脚注：规则 + 段统计 + 当前状态 ----
+    const last = sigs.length ? sigs[sigs.length - 1] : null;
+    const stateTxt = last
+      ? (last.type === 'buy'
+        ? '<b style="color:' + BUY + '">持仓中</b>（' + last.m + ' 买入）'
+        : '<b style="color:' + SELL + '">空仓中</b>（' + last.m + ' 卖出）')
+      : '无信号';
+    const closed = segs.filter((x) => !x.open);
+    const avgRet = closed.length ? E.mean(closed.map((x) => x.ret)) : NaN;
+    const winRate = closed.length ? closed.filter((x) => x.ret > 0).length / closed.length : NaN;
+
+    document.getElementById('sig-foot').innerHTML =
+      '<b style="color:' + BUY + '">▲ 买入</b>：ERP 分位 ≥ 65%（估值给方向即动手）　' +
+      '<b style="color:' + SELL + '">▼ 卖出</b>：ERP 分位 ≤ 35% <b>且</b>收盘跌破 60 日线（趋势确认）　' +
+      '｜　当前状态：' + stateTxt +
+      '<br>已平仓 ' + closed.length + ' 段完整持仓：平均持有 ' +
+      (closed.length ? f.n1(E.mean(closed.map((x) => x.months))) + ' 个月、' : '— ') +
+      '段均收益 <b>' + (isFinite(avgRet) ? f.sign(avgRet) : '—') + '</b>、胜率 ' +
+      (isFinite(winRate) ? f.p(winRate, 0) : '—') +
+      '　｜　下方成交量情绪＝20 日对数成交量 z-score，+2σ 以上多为情绪过热（天量），−2σ 以下多为地量';
+  }
+
   // ---------------- 主渲染 ----------------
   function render() {
     syncLabels();
@@ -928,6 +1115,7 @@
     renderVerdict(snap, fw);
     renderYield();
     renderERP();
+    renderSignals();
     renderDiag();
     renderBacktest(bt);
     renderMatrix();
