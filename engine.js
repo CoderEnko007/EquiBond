@@ -651,7 +651,9 @@
    *        → 分位 ≤ halfPct(50%)（估值走弱），或 分位 ≤ halfPct2(65%) 且（跌破60日线 或
    *          成交量σ > volZHot(1.5) 天量）→ 减半（趋势/情绪预警先降风险，不必等到彻底转空）
    *        → 其余情况恢复满仓
-   * 每期独立重算目标档位（0 / 0.5 / 1），无迟滞项。
+   * confirm(默认2)：目标档位需**连续 N 个月**不变才执行，用于滤掉单月噪音。
+   *   这是体检后的修正——无确认期时 2025-08~2026-09 来回切 8 次、跑输躺平 0.4pct，
+   *   加确认后该段从 3.2% 变 9.96%，换手 0.88x→0.51x（scripts/denoise_test.js）。
    * @returns {Array} [{ i, m, d, type:'buy'|'add'|'reduce'|'sell', level, close, pct, z, erp, erpS, ma60, volZ, fwd6, fwd12 }]
    */
   function tierSignals(series, cfg, opts) {
@@ -661,9 +663,12 @@
     const halfPct = o.halfPct == null ? 0.50 : o.halfPct;
     const halfPct2 = o.halfPct2 == null ? 0.65 : o.halfPct2;
     const volZHot = o.volZHot == null ? 1.5 : o.volZHot;
+    const confirm = o.confirm == null ? 2 : o.confirm;
     const key = signalKey(cfg);
     const out = [];
-    let lv = 0;   // 当前档位 0 / 0.5 / 1
+    let lv = 0;          // 当前档位 0 / 0.5 / 1
+    let pending = null;  // 待确认的目标档位
+    let pendCnt = 0;     // 已连续观察到的次数
 
     for (let i = 0; i < series.length; i++) {
       const r = series[i];
@@ -675,15 +680,31 @@
       const weak = r.ma60 != null && r.close != null && r.close < r.ma60;
       const hot = r.volZ != null && r.volZ > volZHot;
 
-      let next, type = null;
-      if (lv === 0) {
-        if (p >= buyPct) { next = 1; type = 'buy'; } else next = 0;
-      } else if (p <= flatPct) {
-        next = 0; type = 'sell';
-      } else if (p <= halfPct || (p <= halfPct2 && (weak || hot))) {
-        next = 0.5; type = lv === 1 ? 'reduce' : null;
+      let target;
+      if (lv === 0) target = p >= buyPct ? 1 : 0;
+      else if (p <= flatPct) target = 0;
+      else if (p <= halfPct || (p <= halfPct2 && (weak || hot))) target = 0.5;
+      else target = 1;
+
+      // 确认期：目标档位要连续 confirm 个月咬住才执行，中途回到现档位就重新计数
+      let next = lv;
+      if (confirm <= 1) {
+        next = target;
+      } else if (target === lv) {
+        pending = null; pendCnt = 0;
+      } else if (pending === target) {
+        pendCnt++;
+        if (pendCnt >= confirm - 1) { next = target; pending = null; pendCnt = 0; }
       } else {
-        next = 1; type = lv === 0.5 ? 'add' : null;
+        pending = target; pendCnt = 0;
+      }
+
+      let type = null;
+      if (next !== lv) {
+        if (lv === 0) type = 'buy';
+        else if (next === 0) type = 'sell';
+        else if (next < lv) type = 'reduce';
+        else type = 'add';
       }
 
       if (type) {
