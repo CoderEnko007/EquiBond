@@ -643,6 +643,104 @@
     return segs;
   }
 
+  /**
+   * 三档仓位信号（估值定方向 + 趋势/天量预警减半）
+   * 规则（月末评估、次月生效，对照回测见 scripts/freq_test2.js 的 S2）：
+   *   空仓 → ERP 分位 ≥ buyPct(默认60%) 买入满仓（估值给方向就动手，否则踏空底部）
+   *   持仓 → 分位 ≤ flatPct(30%) 清仓
+   *        → 分位 ≤ halfPct(50%)（估值走弱），或 分位 ≤ halfPct2(65%) 且（跌破60日线 或
+   *          成交量σ > volZHot(1.5) 天量）→ 减半（趋势/情绪预警先降风险，不必等到彻底转空）
+   *        → 其余情况恢复满仓
+   * 每期独立重算目标档位（0 / 0.5 / 1），无迟滞项。
+   * @returns {Array} [{ i, m, d, type:'buy'|'add'|'reduce'|'sell', level, close, pct, z, erp, erpS, ma60, volZ, fwd6, fwd12 }]
+   */
+  function tierSignals(series, cfg, opts) {
+    const o = opts || {};
+    const buyPct = o.buyPct == null ? 0.60 : o.buyPct;
+    const flatPct = o.flatPct == null ? 0.30 : o.flatPct;
+    const halfPct = o.halfPct == null ? 0.50 : o.halfPct;
+    const halfPct2 = o.halfPct2 == null ? 0.65 : o.halfPct2;
+    const volZHot = o.volZHot == null ? 1.5 : o.volZHot;
+    const key = signalKey(cfg);
+    const out = [];
+    let lv = 0;   // 当前档位 0 / 0.5 / 1
+
+    for (let i = 0; i < series.length; i++) {
+      const r = series[i];
+      const v = r[key];
+      if (v == null || !isFinite(v)) continue;
+      const st = rollingStats(series, i, cfg.window, key);
+      if (st.n < 24) continue;
+      const p = st.pct;
+      const weak = r.ma60 != null && r.close != null && r.close < r.ma60;
+      const hot = r.volZ != null && r.volZ > volZHot;
+
+      let next, type = null;
+      if (lv === 0) {
+        if (p >= buyPct) { next = 1; type = 'buy'; } else next = 0;
+      } else if (p <= flatPct) {
+        next = 0; type = 'sell';
+      } else if (p <= halfPct || (p <= halfPct2 && (weak || hot))) {
+        next = 0.5; type = lv === 1 ? 'reduce' : null;
+      } else {
+        next = 1; type = lv === 0.5 ? 'add' : null;
+      }
+
+      if (type) {
+        out.push({
+          i: i, m: r.m, d: r.date, type: type, level: next,
+          close: r.close, pct: p, z: st.z,
+          erp: r.erp, erpS: r.erpS, ma60: r.ma60, volZ: r.volZ,
+          fwd6: fwdRet(series, i, 6), fwd12: fwdRet(series, i, 12),
+        });
+      }
+      lv = next;
+    }
+    return out;
+  }
+
+  /**
+   * 三档信号的持仓段：从买入到清仓，按各期实际档位加权复合收益
+   * @returns {Array} [{ buyM, sellM, months, ret, open }]
+   */
+  function tierHoldings(series, sigs) {
+    function segRet(cur, endIdx, open) {
+      let a = 1;
+      for (let j = cur.buyIdx + 1; j <= endIdx; j++) {
+        const r = series[j];
+        if (!r || r.retEq == null || r.retBd == null) continue;
+        let w = 0;
+        for (let q = 0; q < cur.w.length; q++) {
+          if (cur.w[q].i <= j - 1) w = cur.w[q].w; else break;
+        }
+        a *= 1 + w * r.retEq + (1 - w) * r.retBd;
+      }
+      return {
+        buyM: cur.buyM, buyClose: cur.buyClose, buyIdx: cur.buyIdx,
+        sellM: open ? null : series[endIdx].m, sellClose: open ? null : series[endIdx].close,
+        months: endIdx - cur.buyIdx, ret: a - 1, open: open,
+      };
+    }
+    const segs = [];
+    let cur = null;
+    for (let k = 0; k < sigs.length; k++) {
+      const s = sigs[k];
+      if (s.type === 'buy') {
+        cur = { buyM: s.m, buyClose: s.close, buyIdx: s.i, w: [{ i: s.i, w: 1 }] };
+      } else if (cur) {
+        if (s.type === 'reduce') cur.w.push({ i: s.i, w: 0.5 });
+        else if (s.type === 'add') cur.w.push({ i: s.i, w: 1 });
+        else if (s.type === 'sell') {
+          cur.w.push({ i: s.i, w: 0 });
+          segs.push(segRet(cur, s.i, false));
+          cur = null;
+        }
+      }
+    }
+    if (cur) segs.push(segRet(cur, series.length - 1, true));
+    return segs;
+  }
+
   // ---------------- 导出 ----------------
   const Engine = {
     clamp, mean, stdev, quantile, percentileRank, modDuration,
@@ -652,6 +750,7 @@
     buildDaily, moveAvg, monthlySmooth, rollingChannel, signalKey, volZ,
     // 买卖信号
     tradeSignals, holdSegments, fwdRet,
+    tierSignals, tierHoldings,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;

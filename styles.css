@@ -166,6 +166,25 @@ section { margin-bottom: 26px; }
 .chart-switch button.on { background: var(--card); color: var(--stock); font-weight: 600; }
 .chart-foot { font-size: 11.5px; color: var(--txt3); padding: 4px 8px 6px; }
 
+/* ---------- 时间范围快捷按钮 ---------- */
+.range-bar {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 2px 8px 6px; margin-top: -2px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.range-bar::-webkit-scrollbar { display: none; }
+.range-bar button {
+  flex: 0 0 auto;
+  border: 1px solid var(--line); background: var(--card); color: var(--txt2);
+  font-size: 12px; font-family: inherit; line-height: 1.5;
+  padding: 3px 11px; border-radius: 999px; cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.range-bar button:hover { color: var(--stock); border-color: rgba(209, 54, 45, .45); }
+.range-bar button.on {
+  background: var(--stock); border-color: var(--stock); color: #fff; font-weight: 600;
+}
+
 /* ---------- 口径对照诊断面板 ---------- */
 .diag { margin: 0 8px 8px; border-top: 1px dashed var(--line); padding-top: 8px; }
 .diag > summary {
@@ -344,6 +363,8 @@ tr.hl td { background: #fff7f6; font-weight: 600; }
   #chart-yield.tall, #chart-erp.tall { height: 300px; }
   #chart-signal { height: 380px; }
   .chart-foot { font-size: 10.5px; line-height: 1.55; padding: 3px 4px 5px; }
+  .range-bar { gap: 5px; padding: 0 4px 5px; }
+  .range-bar button { font-size: 11px; padding: 3px 9px; }
   .chart-top .mini-sel {
     top: 0; right: 2px; font-size: 10.5px; padding: 2px 4px;
     max-width: 46%; text-overflow: ellipsis;

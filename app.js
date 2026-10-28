@@ -188,6 +188,93 @@
   }
   const noSym = { symbol: 'none' };
 
+  /* ---------------- 时间范围快捷按钮 ----------------
+   * 每张图各自记忆选择：切视图（相对/净值）、改参数重绘后都保持不变。
+   * 定位用 startValue（类目索引）而不是百分比，序列长度变化时不会漂移。 */
+  const RANGES = [
+    { k: '3m', label: '近三月', m: 3 },
+    { k: '6m', label: '近六月', m: 6 },
+    { k: 'ytd', label: '今年来', m: 0 },
+    { k: '1y', label: '近一年', m: 12 },
+    { k: '3y', label: '近三年', m: 36 },
+    { k: '5y', label: '近五年', m: 60 },
+    { k: 'all', label: '全部', m: -1 },
+  ];
+  const rangeOf = {};   // chartId -> 'all' | '3m' | ...
+
+  function rangeDates(id) {
+    const inst = charts[id];
+    if (!inst) return null;
+    const opt = inst.getOption();
+    const ax = opt && opt.xAxis;
+    const first = Array.isArray(ax) ? ax[0] : ax;
+    return first && first.data && first.data.length ? first.data : null;
+  }
+
+  /** 求起始类目索引：以数据最后一个点的日期为锚（而不是今天），避免数据滞后期错位 */
+  function rangeStartIndex(dates, key) {
+    const def = RANGES.filter((r) => r.k === key)[0];
+    if (!def || def.m < 0) return 0;
+    const last = String(dates[dates.length - 1]);
+    const monthly = last.length <= 7;
+    const y = +last.slice(0, 4), mo = +last.slice(5, 7);
+    let ty, tm;
+    if (key === 'ytd') { ty = y; tm = 1; }
+    else {
+      const t = new Date(y, mo - 1 - def.m, 1);
+      ty = t.getFullYear(); tm = t.getMonth() + 1;
+    }
+    const target = ty + '-' + (tm < 10 ? '0' : '') + tm + (monthly ? '' : '-01');
+    let lo = 0, hi = dates.length - 1, ans = dates.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (String(dates[mid]).slice(0, target.length) >= target) { ans = mid; hi = mid - 1; }
+      else lo = mid + 1;
+    }
+    return ans;
+  }
+
+  function applyRange(id) {
+    const inst = charts[id];
+    const dates = rangeDates(id);
+    if (!inst || !dates) return;
+    const key = rangeOf[id] || 'all';
+    const s = rangeStartIndex(dates, key);
+    const n = dates.length;
+    const dz = (inst.getOption().dataZoom || []);
+    dz.forEach((_, i) => inst.dispatchAction({
+      type: 'dataZoom', dataZoomIndex: i, startValue: s, endValue: n - 1,
+    }));
+    const bar = document.querySelector('.range-bar[data-for="' + id + '"]');
+    if (bar) {
+      [].forEach.call(bar.children, (b) => {
+        b.className = b.getAttribute('data-k') === key ? 'on' : '';
+      });
+    }
+  }
+
+  /** 把按钮条插到图容器后面（图表 DOM 由 ECharts 接管，只能做兄弟节点） */
+  function mountRangeBar(id) {
+    if (document.querySelector('.range-bar[data-for="' + id + '"]')) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    const bar = document.createElement('div');
+    bar.className = 'range-bar';
+    bar.setAttribute('data-for', id);
+    RANGES.forEach((r) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = r.label;
+      b.setAttribute('data-k', r.k);
+      if (r.k === (rangeOf[id] || 'all')) b.className = 'on';
+      b.addEventListener('click', () => { rangeOf[id] = r.k; applyRange(id); });
+      bar.appendChild(b);
+    });
+    el.insertAdjacentElement('afterend', bar);
+  }
+
+  function rangeBar(id) { mountRangeBar(id); applyRange(id); }
+
   // ---------------- 数据新鲜度 ----------------
   function renderFreshness(snap) {
     const rf = D.meta.refresh || {};
@@ -421,6 +508,7 @@
         },
       ],
     }, true);
+    rangeBar('chart-yield');
   }
 
   // ---------------- 渲染: ERP 通道图 ----------------
@@ -641,6 +729,7 @@
         },
       ] : []),
     }, true);
+    rangeBar('chart-erp');
   }
 
   /* ---------------- 净值图：相对强弱 / 绝对净值 双视图 ----------------
@@ -721,6 +810,7 @@
         } : undefined,
       })),
     }, true);
+    rangeBar('chart-nav');
   }
 
   // ---------------- 渲染: ERP 口径对照诊断 ----------------
@@ -859,7 +949,7 @@
 
     // 仓位曲线
     ensure('chart-alloc').setOption({
-      grid: gd({ left: 52, right: 20, top: 46, bottom: 42 }),
+      grid: gd({ left: 52, right: 20, top: 46, bottom: 52 }),
       tooltip: Object.assign({}, TIP, {
         trigger: 'axis',
         axisPointer: { type: 'line', lineStyle: { color: C.txt3, type: 'dashed' } },
@@ -873,6 +963,14 @@
       legend: Object.assign(LEGEND(), { data: ['股票仓位'] }),
       xAxis: Object.assign({ type: 'category', data: dates, boundaryGap: false }, AXIS()),
       yAxis: Object.assign({ type: 'value', name: '%', min: 0, max: 100, nameTextStyle: { color: C.txt3, fontSize: 11, padding: [0, 0, 0, -34] } }, AXIS()),
+      dataZoom: [
+        { type: 'inside', throttle: 60 },
+        {
+          type: 'slider', height: NARROW ? 14 : 16, bottom: NARROW ? 6 : 8,
+          borderColor: C.line, fillerColor: 'rgba(47,111,237,.10)',
+          handleStyle: { color: C.bond }, textStyle: { color: C.txt3, fontSize: 10 },
+        },
+      ],
       series: [{
         name: '股票仓位', type: 'line', symbol: 'none', step: 'end',
         lineStyle: { color: C.stock, width: 1.8 }, itemStyle: { color: C.stock },
@@ -880,6 +978,7 @@
         data: bt.weights.map((w) => +(w * 100).toFixed(1)),
       }],
     }, true);
+    rangeBar('chart-alloc');
   }
 
   // ---------------- 渲染: 情景矩阵 ----------------
@@ -920,14 +1019,15 @@
   }
 
   // ---------------- 渲染: 买卖信号 ----------------
-  /* 规则（阈值与效果见 scripts/combo3_test.js 的对照回测）：
-   *   买：ERP 分位 ≥ 65% —— 估值给方向就动手，不等趋势转身，否则踏空底部第一段
-   *   卖：ERP 分位 ≤ 35% 且 收盘跌破 60 日线 —— 顶部估值常提前几个月预警，
-   *       等趋势走坏再卖，避开「2015-01 卖在 3534、之后还涨 52%」那种卖太早
+  /* 三档仓位规则（对照回测见 scripts/freq_test2.js 的 S2，年化 9.12%/夏普 0.70/回撤 −18.6%）：
+   *   ▲ 买入：ERP 分位 ≥ 60%（估值给方向就动手，不等趋势转身，否则踏空底部第一段）
+   *   ▽ 减半：分位 ≤ 50%，或 分位 ≤ 65% 且（跌破 60 日线 / 成交量天量 >1.5σ）—— 趋势或情绪预警先降风险
+   *   ▼ 清仓：分位 ≤ 30%
+   *   ▲ 加满：减半后估值修复（分位 >65% 或回到 50% 上方且趋势修复）即恢复满仓
    * 评估频率与仓位建议/回测一致：月末出信号，次月执行。 */
   function renderSignals() {
-    const sigs = E.tradeSignals(series, cfg);
-    const segs = E.holdSegments(series, sigs);
+    const sigs = E.tierSignals(series, cfg);
+    const segs = E.tierHoldings(series, sigs);
 
     const ds = HAS_DAILY ? dser : series;
     const dates = ds.map((s) => s.d || s.date || s.m);
@@ -942,22 +1042,28 @@
     ds.forEach((s, i) => { idxOfMonth[s.m] = i; });
 
     const PX = '#b07d1a', BUY = C.stock, SELL = '#12a05c';
-    const marks = [];
+    const SIG_TXT = {
+      buy: { s: '▲', t: '买入', c: BUY },
+      add: { s: '▲', t: '加满', c: BUY },
+      reduce: { s: '▽', t: '减半', c: SELL },
+      sell: { s: '▼', t: '清仓', c: SELL },
+    };
+    // 信号点用独立 scatter 序列承载（markPoint 不支持 labelLayout，密集区标签会叠成一团）
+    const markData = [];
     sigs.forEach((s) => {
       const i = idxOfMonth[s.m];
       if (i == null || px[i] == null) return;
-      const buy = s.type === 'buy';
-      marks.push({
-        coord: [dates[i], px[i]],
-        symbol: 'triangle',
-        symbolRotate: buy ? 0 : 180,
-        symbolSize: NARROW ? 9 : 11,
-        symbolOffset: buy ? [0, -11] : [0, 11],
-        itemStyle: { color: buy ? BUY : SELL, borderColor: '#fff', borderWidth: 1 },
+      const info = SIG_TXT[s.type];
+      const up = s.type === 'buy' || s.type === 'add';
+      markData.push({
+        value: [dates[i], px[i]],
+        symbolRotate: up ? 0 : 180,
+        symbolOffset: up ? [0, -11] : [0, 11],
+        itemStyle: { color: info.c, borderColor: '#fff', borderWidth: 1, opacity: s.type === 'add' || s.type === 'reduce' ? 0.75 : 1 },
         label: {
-          show: true, position: buy ? 'top' : 'bottom', distance: 5,
-          formatter: (buy ? '买 ' : '卖 ') + s.m.slice(2),
-          color: buy ? BUY : SELL, fontSize: NARROW ? 9 : 10, fontWeight: 600,
+          show: true, position: up ? 'top' : 'bottom', distance: 5,
+          formatter: info.t + ' ' + s.m.slice(2),
+          color: info.c, fontSize: NARROW ? 9 : 10, fontWeight: 600,
         },
       });
     });
@@ -992,8 +1098,10 @@
               (vz[i] == null ? '' : '　情绪 σ ' + (vz[i] > 0 ? '+' : '') + f.n2(vz[i]));
           }
           if (s) {
-            t += '<br><b style="color:' + (s.type === 'buy' ? BUY : SELL) + '">' +
-              (s.type === 'buy' ? '▲ 买入信号' : '▼ 卖出信号') + '</b>　分位 ' + f.n1(s.pct * 100) + '%';
+            const info = SIG_TXT[s.type];
+            const lvTxt = s.level === 1 ? '股票 100%' : (s.level === 0.5 ? '股票 50%' : '空仓');
+            t += '<br><b style="color:' + info.c + '">' + info.s + ' ' + info.t + '信号</b>　分位 ' +
+              f.n1(s.pct * 100) + '%　→ ' + lvTxt;
           }
           return t;
         },
@@ -1035,7 +1143,12 @@
         {
           name: '沪深300', type: 'line', xAxisIndex: 0, yAxisIndex: 0, symbol: 'none', z: 5,
           lineStyle: { color: PX, width: 1.7 }, itemStyle: { color: PX }, data: px,
-          markPoint: { data: marks, silent: true },
+        },
+        {
+          name: '信号', type: 'scatter', xAxisIndex: 0, yAxisIndex: 0, z: 9,
+          symbol: 'triangle', symbolSize: NARROW ? 10 : 12,
+          data: markData, tooltip: { show: false },
+          labelLayout: { hideOverlap: true },
         },
         ma60 ? {
           name: '60日线', type: 'line', xAxisIndex: 0, yAxisIndex: 0, symbol: 'none', z: 4,
@@ -1060,14 +1173,17 @@
         },
       ],
     }, true);
+    rangeBar('chart-signal');
 
     // ---- 表：信号明细（新→旧）----
-    let h = '<thead><tr><th>评估日</th><th>信号</th><th>收盘</th><th>ERP</th>' +
+    let h = '<thead><tr><th>评估日</th><th>信号</th><th>信号后仓位</th><th>收盘</th><th>ERP</th>' +
       '<th>信号分位</th><th>成交量 σ</th><th>后 6 个月</th><th>后 12 个月</th></tr></thead><tbody>';
     sigs.slice().reverse().forEach((s) => {
-      const buy = s.type === 'buy';
+      const info = SIG_TXT[s.type];
+      const lvTxt = s.level === 1 ? '满仓' : (s.level === 0.5 ? '半仓' : '空仓');
       h += '<tr><td>' + s.m + '</td>' +
-        '<td class="' + (buy ? 'pos' : 'neg') + '"><b>' + (buy ? '▲ 买入' : '▼ 卖出') + '</b></td>' +
+        '<td class="' + (info.c === BUY ? 'pos' : 'neg') + '"><b>' + info.s + ' ' + info.t + '</b></td>' +
+        '<td>' + lvTxt + '</td>' +
         '<td class="num">' + (s.close == null ? '—' : Math.round(s.close).toLocaleString('en-US')) + '</td>' +
         '<td class="num">' + f.n2(s.erp) + '</td>' +
         '<td class="num">' + f.n1(s.pct * 100) + '%</td>' +
@@ -1078,30 +1194,32 @@
         (s.fwd12 == null ? '—' : f.sign(s.fwd12)) + '</td></tr>';
     });
     if (!sigs.length) {
-      h += '<tr><td colspan="8" style="text-align:center;color:#8e97a6">当前参数下没有触发任何信号</td></tr>';
+      h += '<tr><td colspan="9" style="text-align:center;color:#8e97a6">当前参数下没有触发任何信号</td></tr>';
     }
     document.getElementById('t-signal').innerHTML = h + '</tbody>';
 
     // ---- 脚注：规则 + 段统计 + 当前状态 ----
-    const last = sigs.length ? sigs[sigs.length - 1] : null;
-    const stateTxt = last
-      ? (last.type === 'buy'
-        ? '<b style="color:' + BUY + '">持仓中</b>（' + last.m + ' 买入）'
-        : '<b style="color:' + SELL + '">空仓中</b>（' + last.m + ' 卖出）')
+    const curLv = sigs.length ? sigs[sigs.length - 1].level : 0;
+    const curLvTxt = curLv === 1
+      ? '<b style="color:' + BUY + '">满仓持有</b>'
+      : (curLv === 0.5 ? '<b style="color:' + C.amber + '">半仓持有</b>' : '<b style="color:' + SELL + '">空仓</b>');
+    const stateTxt = sigs.length
+      ? curLvTxt + '（' + sigs[sigs.length - 1].m + ' 之后）'
       : '无信号';
     const closed = segs.filter((x) => !x.open);
     const avgRet = closed.length ? E.mean(closed.map((x) => x.ret)) : NaN;
     const winRate = closed.length ? closed.filter((x) => x.ret > 0).length / closed.length : NaN;
 
     document.getElementById('sig-foot').innerHTML =
-      '<b style="color:' + BUY + '">▲ 买入</b>：ERP 分位 ≥ 65%（估值给方向即动手）　' +
-      '<b style="color:' + SELL + '">▼ 卖出</b>：ERP 分位 ≤ 35% <b>且</b>收盘跌破 60 日线（趋势确认）　' +
+      '<b style="color:' + BUY + '">▲ 买入</b>：分位 ≥ 60% 满仓　' +
+      '<b style="color:' + SELL + '">▽ 减半</b>：分位 ≤ 50%，或 ≤ 65% 且跌破 60 日线 / 成交量 &gt;1.5σ　' +
+      '<b style="color:' + SELL + '">▼ 清仓</b>：分位 ≤ 30%　' +
       '｜　当前状态：' + stateTxt +
-      '<br>已平仓 ' + closed.length + ' 段完整持仓：平均持有 ' +
+      '<br>已平仓 ' + closed.length + ' 轮完整持仓（按实际档位加权）：平均 ' +
       (closed.length ? f.n1(E.mean(closed.map((x) => x.months))) + ' 个月、' : '— ') +
-      '段均收益 <b>' + (isFinite(avgRet) ? f.sign(avgRet) : '—') + '</b>、胜率 ' +
+      '轮均收益 <b>' + (isFinite(avgRet) ? f.sign(avgRet) : '—') + '</b>、胜率 ' +
       (isFinite(winRate) ? f.p(winRate, 0) : '—') +
-      '　｜　下方成交量情绪＝20 日对数成交量 z-score，+2σ 以上多为情绪过热（天量），−2σ 以下多为地量';
+      '　｜　下方成交量情绪＝20 日对数成交量 z-score，&gt;+1.5σ 天量参与减半预警，−2σ 以下多为地量';
   }
 
   // ---------------- 主渲染 ----------------
