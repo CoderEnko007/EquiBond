@@ -335,6 +335,19 @@ def main():
         else:
             print("      -> 未取到日线，沿用本地 %s" % DAILY_CSV)
 
+        # ---------- 2c. 盘中保护：未收盘的当日价不能当收盘价 ----------
+        # 实时接口在 9:30~15:00 会给「今日盘中价」，而日线只含已收盘的交易日。
+        # 若把盘中价写进月度锚点，PE / PB / 股息率会被盘中波动污染，而且日期会标成
+        # 一个还没走完的交易日。收盘后（15:05 起）实时价即当日收盘，可以放心用。
+        if live and daily:
+            ld = max(daily)
+            now = datetime.now()
+            before_close = (now.hour * 60 + now.minute) < 15 * 60 + 5
+            if live["date"] > ld and before_close:
+                print("      ! 盘中 %s，实时价 %.2f 尚未收盘 -> 改用已收盘的 %s %.2f"
+                      % (now.strftime("%H:%M"), live["close"], ld, daily[ld]["close"]))
+                live = {"date": ld, "close": daily[ld]["close"], "source": "日线收盘"}
+
         # ---------- 3. 拉国债收益率 ----------
         print("[联网] 拉取 10 年期国债收益率 ...")
         y10 = fetch_y10()
